@@ -11,14 +11,13 @@ function extractText(data: any) {
 }
 
 export async function askGemini(parts: any[], json = false) {
-  const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash'
+  const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
   const response = await fetch(apiUrl(model), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ role: 'user', parts }],
       generationConfig: {
-        temperature: json ? 0.15 : 0.55,
         ...(json ? { responseMimeType: 'application/json' } : {}),
       },
     }),
