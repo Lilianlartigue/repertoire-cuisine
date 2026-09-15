@@ -43,7 +43,13 @@ export default function RecipesPage() {
 
   const categories = useMemo(() => ['Toutes', ...Array.from(new Set(recipes.map((r) => r.category))).sort()], [recipes])
   const filtered = recipes.filter((r) => {
-    const haystack = `${r.canonical_name} ${r.category} ${(r.tags || []).join(' ')}`.toLowerCase()
+    const versionText = (r.recipe_versions || []).flatMap((v) => [
+      ...(v.ingredients || []).map((i) => `${i.item} ${i.note || ''}`),
+      ...(v.equipment || []),
+      ...(v.allergens || []),
+      v.notes || '',
+    ]).join(' ')
+    const haystack = `${r.canonical_name} ${r.category} ${(r.tags || []).join(' ')} ${versionText}`.toLowerCase()
     return haystack.includes(search.toLowerCase()) && (category === 'Toutes' || r.category === category)
   })
 
