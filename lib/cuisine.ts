@@ -75,15 +75,18 @@ export async function saveImportedRecipes(
         .eq('id', groupId)
     }
 
+    if (!groupId) throw new Error('Impossible de créer la fiche recette')
+    const recipeId = groupId
+
     const { count, error: countError } = await supabase
       .from('recipe_versions')
       .select('*', { count: 'exact', head: true })
-      .eq('recipe_id', groupId)
+      .eq('recipe_id', recipeId)
     if (countError) throw countError
 
     const versionLabel = `Version ${(count ?? 0) + 1}`
     const { error: versionError } = await supabase.from('recipe_versions').insert({
-      recipe_id: groupId,
+      recipe_id: recipeId,
       version_label: versionLabel,
       source_type: source.type,
       source_name: source.name ?? null,
@@ -101,7 +104,7 @@ export async function saveImportedRecipes(
     })
     if (versionError) throw versionError
 
-    saved.push({ id: groupId, name: recipe.displayName || recipe.canonicalName, version: versionLabel, existing: wasExisting })
+    saved.push({ id: recipeId, name: recipe.displayName || recipe.canonicalName, version: versionLabel, existing: wasExisting })
   }
 
   return saved
