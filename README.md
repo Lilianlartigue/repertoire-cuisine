@@ -18,7 +18,7 @@ Créer un fichier `.env.local` à partir de `.env.example` et renseigner :
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `GEMINI_API_KEY`
-- `GEMINI_MODEL` (par défaut `gemini-3.6-flash`)
+- `GEMINI_MODEL` (par défaut `gemini-3.8-flash`)
 
 Exécuter ensuite `supabase/schema.sql` dans l'éditeur SQL du projet Supabase.
 
