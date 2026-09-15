@@ -1,0 +1,101 @@
+:root {
+  --bg: #f5f1e8;
+  --card: #fffdf8;
+  --ink: #24312b;
+  --muted: #718078;
+  --line: #ded8ca;
+  --accent: #5f7d67;
+  --accent-soft: #dfe9df;
+  --warm: #efe2cc;
+  --shadow: 0 14px 40px rgba(57, 67, 60, 0.08);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+button, input, textarea { font: inherit; }
+a { color: inherit; text-decoration: none; }
+
+.shell { min-height: 100vh; display: grid; grid-template-columns: 235px 1fr; }
+.sidebar {
+  position: sticky; top: 0; height: 100vh; padding: 28px 20px;
+  background: #e8eee5; border-right: 1px solid #d5ddd2;
+}
+.brand { display: flex; align-items: center; gap: 12px; margin-bottom: 36px; }
+.brandMark {
+  width: 42px; height: 42px; display: grid; place-items: center; border-radius: 14px;
+  background: var(--accent); color: white; font-weight: 800;
+}
+.brand strong, .brand span { display: block; }
+.brand span { color: var(--muted); font-size: 13px; margin-top: 2px; }
+nav { display: grid; gap: 9px; }
+nav a { padding: 12px 13px; border-radius: 12px; color: #415047; }
+nav a:hover { background: rgba(255,255,255,.65); }
+.content { padding: 42px; max-width: 1350px; width: 100%; margin: 0 auto; }
+
+.pageHead { margin-bottom: 28px; }
+.eyebrow { color: var(--accent); text-transform: uppercase; letter-spacing: .12em; font-size: 12px; font-weight: 800; }
+h1 { margin: 7px 0 8px; font-size: clamp(30px, 4vw, 48px); line-height: 1.05; }
+h2 { margin: 0 0 14px; }
+p { line-height: 1.55; }
+.muted { color: var(--muted); }
+
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 20px;
+  padding: 22px; box-shadow: var(--shadow);
+}
+.grid { display: grid; gap: 18px; }
+.grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+.input, .textarea, .select {
+  width: 100%; border: 1px solid #d4d0c5; border-radius: 13px; padding: 13px 14px;
+  background: white; color: var(--ink); outline: none;
+}
+.input:focus, .textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(95,125,103,.12); }
+.textarea { resize: vertical; min-height: 110px; }
+.button {
+  border: 0; border-radius: 13px; padding: 12px 17px; background: var(--accent); color: white;
+  font-weight: 750; cursor: pointer;
+}
+.button.secondary { background: var(--accent-soft); color: #395044; }
+.button:disabled { opacity: .55; cursor: default; }
+
+.chat { display: grid; gap: 14px; margin: 18px 0; }
+.bubble { max-width: 840px; padding: 14px 16px; border-radius: 16px; line-height: 1.55; white-space: pre-wrap; }
+.bubble.user { margin-left: auto; background: #dfe9df; }
+.bubble.ai { background: var(--card); border: 1px solid var(--line); }
+
+.recipeToolbar { display: grid; grid-template-columns: 1fr 220px; gap: 12px; margin-bottom: 22px; }
+.recipeGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.recipeCard { cursor: pointer; transition: transform .16s ease; }
+.recipeCard:hover { transform: translateY(-2px); }
+.recipeCard h3 { margin: 6px 0 8px; }
+.badge { display: inline-flex; padding: 6px 9px; border-radius: 999px; background: var(--warm); font-size: 12px; font-weight: 700; }
+.version { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 16px; }
+.version:first-of-type { border-top: 0; padding-top: 0; }
+.columns { display: grid; grid-template-columns: 1fr 1.25fr; gap: 22px; }
+ul, ol { padding-left: 20px; }
+li { margin-bottom: 7px; line-height: 1.45; }
+
+.dropzone {
+  border: 2px dashed #c6cec3; border-radius: 18px; padding: 32px; text-align: center; background: rgba(255,255,255,.45);
+}
+.status { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--accent-soft); }
+.detected { margin-top: 18px; display: grid; gap: 10px; }
+.detectedItem { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: white; }
+
+@media (max-width: 900px) {
+  .shell { display: block; }
+  .sidebar { position: static; height: auto; padding: 16px; border-right: 0; border-bottom: 1px solid #d5ddd2; }
+  .brand { margin-bottom: 13px; }
+  nav { display: flex; overflow-x: auto; gap: 8px; }
+  nav a { white-space: nowrap; background: rgba(255,255,255,.45); }
+  .content { padding: 24px 16px 38px; }
+  .grid2, .recipeGrid, .columns { grid-template-columns: 1fr; }
+  .recipeToolbar { grid-template-columns: 1fr; }
+}
