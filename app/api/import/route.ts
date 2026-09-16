@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { askGemini, recipeExtractionPrompt } from '@/lib/gemini'
-import { saveImportedRecipes } from '@/lib/cuisine'
+import { saveImportedRecipes, type ImportedRecipe } from '@/lib/cuisine'
 
 export const runtime = 'nodejs'
 
@@ -58,12 +58,9 @@ function collectRecipeNodes(value: unknown, output: Record<string, unknown>[]): 
     for (const item of value) collectRecipeNodes(item, output)
     return
   }
-
   if (!value || typeof value !== 'object') return
   const object = value as Record<string, unknown>
-
   if (isRecipeType(object['@type'])) output.push(object)
-
   for (const nested of Object.values(object)) {
     if (nested && typeof nested === 'object') collectRecipeNodes(nested, output)
   }
@@ -73,30 +70,118 @@ function extractRecipeJsonLd(html: string): Record<string, unknown>[] {
   const recipes: Record<string, unknown>[] = []
   const scriptRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
   let match: RegExpExecArray | null
-
   while ((match = scriptRegex.exec(html)) !== null) {
     const raw = match[1]?.trim()
     if (!raw) continue
-
     try {
-      const parsed = JSON.parse(raw)
-      collectRecipeNodes(parsed, recipes)
+      collectRecipeNodes(JSON.parse(raw), recipes)
     } catch {
-      // Certains sites contiennent un JSON-LD non valide. On passe au bloc suivant.
+      // Bloc JSON-LD invalide : on ignore ce bloc.
     }
   }
 
   const unique = new Map<string, Record<string, unknown>>()
   for (const recipe of recipes) {
-    const key = JSON.stringify([
-      recipe.name ?? '',
-      recipe.recipeIngredient ?? [],
-      recipe.recipeInstructions ?? [],
-    ])
+    if (!recipe.name || !recipe.recipeIngredient || !recipe.recipeInstructions) continue
+    const key = JSON.stringify([recipe.name, recipe.recipeIngredient, recipe.recipeInstructions])
     if (!unique.has(key)) unique.set(key, recipe)
   }
-
   return Array.from(unique.values()).slice(0, 8)
+}
+
+function toText(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  if (typeof value === 'number') return String(value)
+  return null
+}
+
+function durationLabel(value: unknown): string | null {
+  const text = toText(value)
+  if (!text) return null
+  const match = text.match(/^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/i)
+  if (!match) return text
+  const parts: string[] = []
+  if (match[1]) parts.push(`${match[1]} j`)
+  if (match[2]) parts.push(`${match[2]} h`)
+  if (match[3]) parts.push(`${match[3]} min`)
+  if (match[4]) parts.push(`${match[4]} s`)
+  return parts.join(' ') || null
+}
+
+function flattenInstructions(value: unknown, output: string[]): void {
+  if (typeof value === 'string') {
+    if (value.trim()) output.push(value.trim())
+    return
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) flattenInstructions(item, output)
+    return
+  }
+  if (!value || typeof value !== 'object') return
+  const object = value as Record<string, unknown>
+  const text = toText(object.text) || toText(object.name)
+  if (text) output.push(text)
+  if (object.itemListElement) flattenInstructions(object.itemListElement, output)
+}
+
+function pickCategory(node: Record<string, unknown>, name: string): string {
+  const raw = [node.recipeCategory, node.recipeCuisine, node.keywords]
+    .flatMap((value) => Array.isArray(value) ? value : [value])
+    .map((value) => toText(value)?.toLowerCase() || '')
+    .join(' ')
+  const haystack = `${name.toLowerCase()} ${raw}`
+  if (haystack.includes('crème')) return 'Crèmes'
+  if (haystack.includes('dessert') || haystack.includes('pâtiss')) return 'Desserts'
+  if (haystack.includes('sauce')) return 'Sauces'
+  if (haystack.includes('boulanger') || haystack.includes('pain') || haystack.includes('brioche')) return 'Boulangerie'
+  return 'Autres'
+}
+
+function structuredRecipeToImported(node: Record<string, unknown>): ImportedRecipe | null {
+  const name = toText(node.name)
+  if (!name) return null
+
+  const ingredientValues = Array.isArray(node.recipeIngredient) ? node.recipeIngredient : []
+  const ingredients = ingredientValues
+    .map((value) => toText(value))
+    .filter((value): value is string => Boolean(value))
+    .map((line) => ({ item: line, quantity: null, unit: null, note: null }))
+
+  const instructionTexts: string[] = []
+  flattenInstructions(node.recipeInstructions, instructionTexts)
+  const steps = instructionTexts.map((instruction, index) => ({ order: index + 1, instruction }))
+
+  if (!ingredients.length || !steps.length) return null
+
+  const keywords = Array.isArray(node.keywords)
+    ? node.keywords.map((value) => toText(value)).filter((value): value is string => Boolean(value))
+    : (toText(node.keywords)?.split(',').map((value) => value.trim()).filter(Boolean) ?? [])
+
+  const yieldValue = Array.isArray(node.recipeYield)
+    ? node.recipeYield.map((value) => toText(value)).filter(Boolean).join(' / ')
+    : toText(node.recipeYield)
+
+  const description = toText(node.description)
+
+  return {
+    canonicalName: name,
+    displayName: name,
+    category: pickCategory(node, name),
+    tags: keywords.slice(0, 12),
+    servings: yieldValue || null,
+    ingredients,
+    equipment: [],
+    steps,
+    times: {
+      preparation: durationLabel(node.prepTime),
+      cooking: durationLabel(node.cookTime),
+      total: durationLabel(node.totalTime),
+    },
+    temperatures: [],
+    allergens: [],
+    notes: description,
+    rawExcerpt: JSON.stringify(node).slice(0, 12000),
+  }
 }
 
 function assertPublicUrl(value: string) {
@@ -155,10 +240,7 @@ export async function POST(request: NextRequest) {
 
     if (body.manual) {
       const recipe = recipeSchema.parse(body.manual)
-      const saved = await saveImportedRecipes([recipe], {
-        type: 'manual',
-        name: 'Ajout manuel',
-      })
+      const saved = await saveImportedRecipes([recipe], { type: 'manual', name: 'Ajout manuel' })
       return NextResponse.json({ detected: 1, saved })
     }
 
@@ -177,25 +259,23 @@ export async function POST(request: NextRequest) {
 
     const html = await page.text()
     const structuredRecipes = extractRecipeJsonLd(html)
-
-    let sourceForAi: string
-    let extractionMethod: 'json-ld' | 'text'
+      .map(structuredRecipeToImported)
+      .filter((recipe): recipe is ImportedRecipe => Boolean(recipe))
 
     if (structuredRecipes.length) {
-      extractionMethod = 'json-ld'
-      sourceForAi = `Page web ${url.toString()}.
-Le site fournit des données structurées Schema.org Recipe. Utilise-les en priorité et n'invente rien qui n'y figure pas.
-
-Données Recipe :\n${JSON.stringify(structuredRecipes).slice(0, 60000)}`
-    } else {
-      extractionMethod = 'text'
-      const text = cleanHtml(html).slice(0, 65000)
-      if (text.length < 80) throw new Error('Le site ne contient pas assez de texte exploitable')
-      sourceForAi = `Page web ${url.toString()}.
-Aucune donnée Recipe structurée exploitable n'a été trouvée. Analyse le contenu textuel ci-dessous et ignore menus, publicité, newsletter et navigation.\n\n${text}`
+      const saved = await saveImportedRecipes(structuredRecipes, {
+        type: 'url',
+        name: url.hostname,
+        url: url.toString(),
+      })
+      return NextResponse.json({ detected: structuredRecipes.length, saved, extractionMethod: 'json-ld-direct' })
     }
 
-    const prompt = recipeExtractionPrompt(sourceForAi)
+    const text = cleanHtml(html).slice(0, 65000)
+    if (text.length < 80) throw new Error('Le site ne contient pas assez de texte exploitable')
+
+    const prompt = recipeExtractionPrompt(`Page web ${url.toString()}.
+Analyse le contenu textuel ci-dessous. Ignore menus, publicité, newsletter et navigation.\n\n${text}`)
     const result = await parseAiJson([{ text: prompt }])
     const saved = await saveImportedRecipes(result.recipes, {
       type: 'url',
@@ -203,11 +283,7 @@ Aucune donnée Recipe structurée exploitable n'a été trouvée. Analyse le con
       url: url.toString(),
     })
 
-    return NextResponse.json({
-      detected: result.recipes.length,
-      saved,
-      extractionMethod,
-    })
+    return NextResponse.json({ detected: result.recipes.length, saved, extractionMethod: 'text-ai' })
   } catch (error: any) {
     if (error?.name === 'ZodError') {
       return NextResponse.json({ error: 'La fiche est incomplète. Vérifie le nom, la catégorie, les ingrédients et les étapes.' }, { status: 422 })
