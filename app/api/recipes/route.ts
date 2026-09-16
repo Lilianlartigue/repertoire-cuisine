@@ -1,25 +1,49 @@
 import { NextResponse } from 'next/server'
-import { getSupabaseAdmin } from '@/lib/cuisine'
+import { getDb } from '@/lib/db'
 
 export const runtime = 'nodejs'
 
 export async function GET() {
   try {
-    const supabase = getSupabaseAdmin()
-    const { data, error } = await supabase
-      .from('recipe_groups')
-      .select('id, canonical_name, category, tags, updated_at, recipe_versions(*)')
-      .order('canonical_name', { ascending: true })
-    if (error) throw error
+    const db = getDb()
+    const result = await db.query(`
+      select
+        g.id,
+        g.canonical_name,
+        g.category,
+        g.tags,
+        g.updated_at,
+        coalesce(
+          json_agg(
+            json_build_object(
+              'id', v.id,
+              'recipe_id', v.recipe_id,
+              'version_label', v.version_label,
+              'source_type', v.source_type,
+              'source_name', v.source_name,
+              'source_url', v.source_url,
+              'source_file_name', v.source_file_name,
+              'servings', v.servings,
+              'ingredients', v.ingredients,
+              'equipment', v.equipment,
+              'steps', v.steps,
+              'times', v.times,
+              'temperatures', v.temperatures,
+              'allergens', v.allergens,
+              'notes', v.notes,
+              'raw_excerpt', v.raw_excerpt,
+              'created_at', v.created_at
+            ) order by v.created_at asc
+          ) filter (where v.id is not null),
+          '[]'::json
+        ) as recipe_versions
+      from recipe_groups g
+      left join recipe_versions v on v.recipe_id = g.id
+      group by g.id
+      order by g.canonical_name asc
+    `)
 
-    const recipes = (data || []).map((recipe: any) => ({
-      ...recipe,
-      recipe_versions: (recipe.recipe_versions || []).sort(
-        (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      ),
-    }))
-
-    return NextResponse.json({ recipes })
+    return NextResponse.json({ recipes: result.rows })
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Erreur répertoire', recipes: [] }, { status: 500 })
   }
