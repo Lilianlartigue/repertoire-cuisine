@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import styles from './DuplicateAlert.module.css'
 
 type DuplicateCandidate = {
   recipe_a_id: string
@@ -25,17 +26,17 @@ export default function DuplicateAlert() {
   if (loading || duplicates.length === 0) return null
 
   return (
-    <div className="duplicateAlert card" role="status">
+    <div className={`card ${styles.alert}`} role="status">
       <div>
         <strong>⚠️ Attention, des recettes similaires ont été détectées</strong>
         <p className="muted">Je ne fusionne rien automatiquement. Vérifie simplement les fiches ci-dessous si tu penses qu’il s’agit de doublons.</p>
       </div>
 
-      <div className="duplicateList">
+      <div className={styles.list}>
         {duplicates.map((item) => (
-          <div className="duplicatePair" key={`${item.recipe_a_id}-${item.recipe_b_id}`}>
+          <div className={styles.pair} key={`${item.recipe_a_id}-${item.recipe_b_id}`}>
             <span>{item.recipe_a_name}</span>
-            <span className="duplicateArrow">↔</span>
+            <span className={styles.arrow}>↔</span>
             <span>{item.recipe_b_name}</span>
             <span className="badge">{Math.round(item.similarity * 100)} % proche</span>
           </div>
