@@ -39,6 +39,11 @@ const deleteSchema = z.object({
   versionId: z.string().uuid().optional(),
 })
 
+const preferredSchema = z.object({
+  recipeId: z.string().uuid(),
+  versionId: z.string().uuid().nullable(),
+})
+
 export async function GET() {
   try {
     const db = getDb()
@@ -48,6 +53,7 @@ export async function GET() {
         g.canonical_name,
         g.category,
         g.tags,
+        g.preferred_version_id,
         g.updated_at,
         coalesce(
           json_agg(
@@ -69,7 +75,7 @@ export async function GET() {
               'notes', v.notes,
               'raw_excerpt', v.raw_excerpt,
               'created_at', v.created_at
-            ) order by v.created_at asc
+            ) order by (v.id = g.preferred_version_id) desc, v.created_at asc
           ) filter (where v.id is not null),
           '[]'::json
         ) as recipe_versions
@@ -145,6 +151,36 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Certains champs de la recette sont invalides.' }, { status: 422 })
     }
     return NextResponse.json({ error: error.message || 'Impossible de modifier la recette' }, { status: 500 })
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const body = preferredSchema.parse(await request.json())
+    const db = getDb()
+
+    if (body.versionId) {
+      const versionCheck = await db.query(
+        'select id from recipe_versions where id = $1 and recipe_id = $2 limit 1',
+        [body.versionId, body.recipeId]
+      )
+      if (!versionCheck.rows[0]) {
+        return NextResponse.json({ error: 'Version introuvable' }, { status: 404 })
+      }
+    }
+
+    const updated = await db.query(
+      'update recipe_groups set preferred_version_id = $1, updated_at = now() where id = $2 returning id',
+      [body.versionId, body.recipeId]
+    )
+    if (!updated.rows[0]) return NextResponse.json({ error: 'Recette introuvable' }, { status: 404 })
+
+    return NextResponse.json({ ok: true })
+  } catch (error: any) {
+    if (error?.name === 'ZodError') {
+      return NextResponse.json({ error: 'Demande invalide.' }, { status: 422 })
+    }
+    return NextResponse.json({ error: error.message || 'Impossible de choisir la version préférée' }, { status: 500 })
   }
 }
 
