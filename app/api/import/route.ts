@@ -47,13 +47,13 @@ function cleanHtml(html: string) {
     .trim()
 }
 
-function isRecipeType(value: unknown) {
+function isRecipeType(value: unknown): boolean {
   if (typeof value === 'string') return value.toLowerCase() === 'recipe'
-  if (Array.isArray(value)) return value.some((item) => isRecipeType(item))
+  if (Array.isArray(value)) return value.some((item): boolean => isRecipeType(item))
   return false
 }
 
-function collectRecipeNodes(value: unknown, output: Record<string, unknown>[]) {
+function collectRecipeNodes(value: unknown, output: Record<string, unknown>[]): void {
   if (Array.isArray(value)) {
     for (const item of value) collectRecipeNodes(item, output)
     return
@@ -69,7 +69,7 @@ function collectRecipeNodes(value: unknown, output: Record<string, unknown>[]) {
   }
 }
 
-function extractRecipeJsonLd(html: string) {
+function extractRecipeJsonLd(html: string): Record<string, unknown>[] {
   const recipes: Record<string, unknown>[] = []
   const scriptRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
   let match: RegExpExecArray | null
