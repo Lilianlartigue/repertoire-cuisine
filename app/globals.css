@@ -94,10 +94,14 @@ li { margin-bottom: 7px; line-height: 1.45; }
 .printOnly { display: none; }
 
 .editorOverlay {
-  position: fixed; inset: 0; z-index: 50; padding: 24px; overflow-y: auto;
+  position: fixed; inset: 0; z-index: 60; padding: 0; overflow: hidden;
+  display: flex; justify-content: flex-end;
   background: rgba(36,49,43,.42); backdrop-filter: blur(4px);
 }
-.recipeEditor { width: min(1050px, 100%); margin: 0 auto; cursor: default; }
+.recipeEditor {
+  width: min(760px, 58vw); height: 100vh; margin: 0; overflow-y: auto;
+  border-radius: 22px 0 0 22px; cursor: default;
+}
 .editorTitle { justify-content: space-between; margin-bottom: 18px; }
 .editorTitle h2 { margin-bottom: 0; }
 .editList { display: grid; gap: 10px; margin-bottom: 22px; }
@@ -106,6 +110,23 @@ li { margin-bottom: 7px; line-height: 1.45; }
 .stepNumber { font-weight: 800; padding-top: 13px; }
 .editorActions { margin-top: 22px; }
 .recipeEditor label { display: grid; gap: 7px; font-weight: 700; }
+.editorStatus { margin-bottom: 18px; }
+
+.recipeDrawerBackdrop {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(36,49,43,.28); backdrop-filter: blur(2px);
+}
+.recipeDrawer {
+  position: absolute; top: 0; right: 0; width: min(760px, 58vw); height: 100vh;
+  overflow-y: auto; background: var(--card); padding: 28px;
+  border-left: 1px solid var(--line); box-shadow: -18px 0 45px rgba(36,49,43,.16);
+}
+.drawerTop {
+  position: sticky; top: -28px; z-index: 3; margin: -28px -28px 22px;
+  padding: 28px; display: flex; justify-content: space-between; gap: 18px; align-items: flex-start;
+  background: rgba(255,253,248,.96); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
+}
+.drawerTop h2 { margin: 8px 0 4px; }
 
 .dropzone {
   border: 2px dashed #c6cec3; border-radius: 18px; padding: 32px; text-align: center; background: rgba(255,255,255,.45);
@@ -125,8 +146,19 @@ li { margin-bottom: 7px; line-height: 1.45; }
   .recipeToolbar { grid-template-columns: 1fr; }
   .ingredientEdit, .stepEdit { grid-template-columns: 1fr; }
   .stepNumber { padding-top: 0; }
-  .editorOverlay { padding: 10px; }
   .scaleInput { max-width: none; }
+  .recipeDrawerBackdrop, .editorOverlay { background: var(--card); backdrop-filter: none; }
+  .recipeDrawer, .recipeEditor {
+    position: absolute; inset: 0; width: 100vw; max-width: none; height: 100dvh;
+    margin: 0; border: 0; border-radius: 0; padding: 20px 16px 34px; box-shadow: none;
+  }
+  .drawerTop {
+    top: -20px; margin: -20px -16px 18px; padding: 18px 16px;
+  }
+  .editorTitle {
+    position: sticky; top: -20px; z-index: 3; margin: -20px -16px 18px; padding: 18px 16px;
+    background: rgba(255,253,248,.96); border-bottom: 1px solid var(--line);
+  }
 }
 
 @media print {
@@ -136,29 +168,26 @@ li { margin-bottom: 7px; line-height: 1.45; }
   body.printingRecipe .pageHead,
   body.printingRecipe .recipeToolbar,
   body.printingRecipe .status,
-  body.printingRecipe .recipeGrid > .recipeCard,
+  body.printingRecipe .recipeGrid,
   body.printingRecipe .editorOverlay,
   body.printingRecipe .noPrint { display: none !important; }
   body.printingRecipe .shell,
-  body.printingRecipe .content,
-  body.printingRecipe .recipeGrid {
+  body.printingRecipe .content {
     display: block;
     width: 100%;
     max-width: none;
     margin: 0;
     padding: 0;
   }
-  body.printingRecipe .recipeCard:has(.printTarget) {
-    display: block !important;
-    border: 0;
-    box-shadow: none;
-    padding: 0;
-    background: white;
+  body.printingRecipe .recipeDrawerBackdrop {
+    position: static; display: block; background: white; backdrop-filter: none;
   }
-  body.printingRecipe .recipeCard:has(.printTarget) > .badge,
-  body.printingRecipe .recipeCard:has(.printTarget) > h3,
-  body.printingRecipe .recipeCard:has(.printTarget) > .muted { display: none !important; }
-  body.printingRecipe .recipeCard:has(.printTarget) .version:not(.printTarget) { display: none !important; }
+  body.printingRecipe .recipeDrawer {
+    position: static; display: block; width: 100%; height: auto; overflow: visible;
+    border: 0; box-shadow: none; padding: 0; background: white;
+  }
+  body.printingRecipe .drawerTop { display: none !important; }
+  body.printingRecipe .recipeDrawer .version:not(.printTarget) { display: none !important; }
   body.printingRecipe .printTarget {
     display: block !important;
     border: 0;
