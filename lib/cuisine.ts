@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { getDb } from '@/lib/db'
 
 export type ImportedRecipe = {
   canonicalName: string
@@ -27,84 +27,87 @@ export function canonicalKey(name: string) {
     .replace(/\s+/g, '-')
 }
 
-export function getSupabaseAdmin() {
-  const url = process.env.SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !key) throw new Error('SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY manquant')
-  return createClient(url, key, {
-    auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
-  })
-}
-
 export async function saveImportedRecipes(
   recipes: ImportedRecipe[],
   source: { type: 'url' | 'pdf' | 'image' | 'manual'; name?: string; url?: string; fileName?: string }
 ) {
-  const supabase = getSupabaseAdmin()
+  const db = getDb()
   const saved: Array<{ id: string; name: string; version: string; existing: boolean }> = []
 
   for (const recipe of recipes) {
     const key = canonicalKey(recipe.canonicalName || recipe.displayName)
-    const { data: existing, error: findError } = await supabase
-      .from('recipe_groups')
-      .select('id, canonical_name')
-      .eq('canonical_key', key)
-      .maybeSingle()
-    if (findError) throw findError
 
-    let groupId = existing?.id as string | undefined
+    const existingResult = await db.query(
+      'select id, canonical_name from recipe_groups where canonical_key = $1 limit 1',
+      [key]
+    )
+
+    let groupId = existingResult.rows[0]?.id as string | undefined
     const wasExisting = Boolean(groupId)
 
     if (!groupId) {
-      const { data: created, error: createError } = await supabase
-        .from('recipe_groups')
-        .insert({
-          canonical_key: key,
-          canonical_name: recipe.displayName || recipe.canonicalName,
-          category: recipe.category || 'Autres',
-          tags: recipe.tags ?? [],
-        })
-        .select('id')
-        .single()
-      if (createError) throw createError
-      groupId = created.id
+      const created = await db.query(
+        `insert into recipe_groups (canonical_key, canonical_name, category, tags)
+         values ($1, $2, $3, $4)
+         returning id`,
+        [
+          key,
+          recipe.displayName || recipe.canonicalName,
+          recipe.category || 'Autres',
+          recipe.tags ?? [],
+        ]
+      )
+      groupId = created.rows[0]?.id
     } else {
-      await supabase
-        .from('recipe_groups')
-        .update({ category: recipe.category || 'Autres', tags: recipe.tags ?? [], updated_at: new Date().toISOString() })
-        .eq('id', groupId)
+      await db.query(
+        `update recipe_groups
+         set category = $1, tags = $2, updated_at = now()
+         where id = $3`,
+        [recipe.category || 'Autres', recipe.tags ?? [], groupId]
+      )
     }
 
     if (!groupId) throw new Error('Impossible de créer la fiche recette')
-    const recipeId = groupId
 
-    const { count, error: countError } = await supabase
-      .from('recipe_versions')
-      .select('*', { count: 'exact', head: true })
-      .eq('recipe_id', recipeId)
-    if (countError) throw countError
+    const countResult = await db.query(
+      'select count(*)::int as count from recipe_versions where recipe_id = $1',
+      [groupId]
+    )
+    const versionLabel = `Version ${Number(countResult.rows[0]?.count ?? 0) + 1}`
 
-    const versionLabel = `Version ${(count ?? 0) + 1}`
-    const { error: versionError } = await supabase.from('recipe_versions').insert({
-      recipe_id: recipeId,
-      version_label: versionLabel,
-      source_type: source.type,
-      source_name: source.name ?? null,
-      source_url: source.url ?? null,
-      source_file_name: source.fileName ?? null,
-      servings: recipe.servings ?? null,
-      ingredients: recipe.ingredients ?? [],
-      equipment: recipe.equipment ?? [],
-      steps: recipe.steps ?? [],
-      times: recipe.times ?? {},
-      temperatures: recipe.temperatures ?? [],
-      allergens: recipe.allergens ?? [],
-      notes: recipe.notes ?? null,
-      raw_excerpt: recipe.rawExcerpt ?? null,
+    await db.query(
+      `insert into recipe_versions (
+        recipe_id, version_label, source_type, source_name, source_url, source_file_name,
+        servings, ingredients, equipment, steps, times, temperatures, allergens, notes, raw_excerpt
+      ) values (
+        $1, $2, $3, $4, $5, $6,
+        $7, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb, $12::jsonb, $13, $14, $15
+      )`,
+      [
+        groupId,
+        versionLabel,
+        source.type,
+        source.name ?? null,
+        source.url ?? null,
+        source.fileName ?? null,
+        recipe.servings ?? null,
+        JSON.stringify(recipe.ingredients ?? []),
+        JSON.stringify(recipe.equipment ?? []),
+        JSON.stringify(recipe.steps ?? []),
+        JSON.stringify(recipe.times ?? {}),
+        JSON.stringify(recipe.temperatures ?? []),
+        recipe.allergens ?? [],
+        recipe.notes ?? null,
+        recipe.rawExcerpt ?? null,
+      ]
+    )
+
+    saved.push({
+      id: groupId,
+      name: recipe.displayName || recipe.canonicalName,
+      version: versionLabel,
+      existing: wasExisting,
     })
-    if (versionError) throw versionError
-
-    saved.push({ id: recipeId, name: recipe.displayName || recipe.canonicalName, version: versionLabel, existing: wasExisting })
   }
 
   return saved
