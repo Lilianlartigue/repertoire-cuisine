@@ -53,6 +53,32 @@ function splitList(value: string) {
   return value.split(',').map((item) => item.trim()).filter(Boolean)
 }
 
+function firstNumber(value?: string | null): number | null {
+  if (!value) return null
+  const match = value.match(/\d+(?:[.,]\d+)?/)
+  if (!match) return null
+  const number = Number(match[0].replace(',', '.'))
+  return Number.isFinite(number) && number > 0 ? number : null
+}
+
+function quantityNumber(value?: string | null): number | null {
+  if (!value) return null
+  const text = value.trim().replace(',', '.')
+  const mixed = text.match(/^(\d+)\s+(\d+)\/(\d+)$/)
+  if (mixed) return Number(mixed[1]) + Number(mixed[2]) / Number(mixed[3])
+  const fraction = text.match(/^(\d+)\/(\d+)$/)
+  if (fraction) return Number(fraction[1]) / Number(fraction[2])
+  if (!/^\d+(?:\.\d+)?$/.test(text)) return null
+  const number = Number(text)
+  return Number.isFinite(number) ? number : null
+}
+
+function scaledQuantity(value: string | null | undefined, factor: number) {
+  const number = quantityNumber(value)
+  if (number === null || factor === 1) return value || ''
+  return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(number * factor)
+}
+
 export default function RecipesPage() {
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [loading, setLoading] = useState(true)
@@ -62,6 +88,7 @@ export default function RecipesPage() {
   const [editing, setEditing] = useState<EditState | null>(null)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
+  const [targets, setTargets] = useState<Record<string, string>>({})
 
   async function loadRecipes() {
     const response = await fetch('/api/recipes', { cache: 'no-store' })
@@ -76,9 +103,10 @@ export default function RecipesPage() {
   const categories = useMemo(() => ['Toutes', ...Array.from(new Set(recipes.map((r) => r.category))).sort()], [recipes])
   const filtered = recipes.filter((r) => {
     const versionText = (r.recipe_versions || []).flatMap((v) => [
-      ...(v.ingredients || []).map((i) => `${i.item} ${i.note || ''}`),
+      ...(v.ingredients || []).map((i) => `${i.item} ${i.quantity || ''} ${i.unit || ''} ${i.note || ''}`),
       ...(v.equipment || []),
       ...(v.allergens || []),
+      ...(v.steps || []).map((s) => s.instruction),
       v.notes || '',
     ]).join(' ')
     const haystack = `${r.canonical_name} ${r.category} ${(r.tags || []).join(' ')} ${versionText}`.toLowerCase()
@@ -134,17 +162,10 @@ export default function RecipesPage() {
       tags: splitList(editing.tags),
       servings: editing.servings.trim() || null,
       ingredients: editing.ingredients
-        .map((i) => ({
-          item: i.item.trim(),
-          quantity: i.quantity?.trim() || null,
-          unit: i.unit?.trim() || null,
-          note: i.note?.trim() || null,
-        }))
+        .map((i) => ({ item: i.item.trim(), quantity: i.quantity?.trim() || null, unit: i.unit?.trim() || null, note: i.note?.trim() || null }))
         .filter((i) => i.item),
       equipment: splitList(editing.equipment),
-      steps: editing.steps
-        .map((s, index) => ({ order: index + 1, instruction: s.instruction.trim() }))
-        .filter((s) => s.instruction),
+      steps: editing.steps.map((s, index) => ({ order: index + 1, instruction: s.instruction.trim() })).filter((s) => s.instruction),
       times: {
         preparation: editing.preparation.trim() || null,
         cooking: editing.cooking.trim() || null,
@@ -174,6 +195,43 @@ export default function RecipesPage() {
     }
   }
 
+  async function deleteRecipe(recipe: Recipe) {
+    if (!window.confirm(`Supprimer complètement « ${recipe.canonical_name} » et toutes ses versions ?`)) return
+    setMessage('Suppression…')
+    try {
+      const response = await fetch('/api/recipes', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipeId: recipe.id }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Suppression impossible')
+      setOpen(null)
+      await loadRecipes()
+      setMessage('Recette supprimée.')
+    } catch (error: any) {
+      setMessage(`Erreur : ${error.message}`)
+    }
+  }
+
+  async function deleteVersion(recipe: Recipe, version: Version) {
+    if (!window.confirm(`Supprimer ${version.version_label} de « ${recipe.canonical_name} » ?`)) return
+    setMessage('Suppression…')
+    try {
+      const response = await fetch('/api/recipes', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipeId: recipe.id, versionId: version.id }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Suppression impossible')
+      await loadRecipes()
+      setMessage(data.deleted === 'last-version-and-recipe' ? 'Dernière version supprimée : la fiche a aussi été supprimée.' : 'Version supprimée.')
+    } catch (error: any) {
+      setMessage(`Erreur : ${error.message}`)
+    }
+  }
+
   return (
     <section>
       <header className="pageHead">
@@ -183,7 +241,7 @@ export default function RecipesPage() {
       </header>
 
       <div className="recipeToolbar">
-        <input className="input" placeholder="Rechercher une recette, un ingrédient, une catégorie…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input className="input" placeholder="Rechercher une recette, un ingrédient, une technique, une catégorie…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <select className="select" value={category} onChange={(e) => setCategory(e.target.value)}>
           {categories.map((c) => <option key={c}>{c}</option>)}
         </select>
@@ -201,37 +259,65 @@ export default function RecipesPage() {
             <p className="muted">{recipe.recipe_versions?.length || 0} version{recipe.recipe_versions?.length === 1 ? '' : 's'}</p>
             {open === recipe.id ? (
               <div onClick={(e) => e.stopPropagation()}>
-                {(recipe.recipe_versions || []).map((version) => (
-                  <div className="version" key={version.id}>
-                    <div className="row editHeader">
-                      <h4>{version.version_label}</h4>
-                      <button className="button secondary" type="button" onClick={() => startEdit(recipe, version)}>Modifier</button>
-                    </div>
-                    <p className="muted">
-                      Source : {version.source_name || version.source_file_name || version.source_url || version.source_type}
-                      {version.servings ? ` · Rendement : ${version.servings}` : ''}
-                    </p>
-                    <div className="columns">
-                      <div>
-                        <strong>Ingrédients</strong>
-                        <ul>
-                          {(version.ingredients || []).map((i, index) => (
-                            <li key={index}>{[i.quantity, i.unit, i.item].filter(Boolean).join(' ')}{i.note ? ` · ${i.note}` : ''}</li>
-                          ))}
-                        </ul>
+                {(recipe.recipe_versions || []).map((version) => {
+                  const baseServings = firstNumber(version.servings)
+                  const target = Number((targets[version.id] || '').replace(',', '.'))
+                  const factor = baseServings && Number.isFinite(target) && target > 0 ? target / baseServings : 1
+
+                  return (
+                    <div className="version" key={version.id}>
+                      <div className="row editHeader">
+                        <h4>{version.version_label}</h4>
+                        <button className="button secondary" type="button" onClick={() => startEdit(recipe, version)}>Modifier</button>
+                        <button className="button danger" type="button" onClick={() => deleteVersion(recipe, version)}>Supprimer la version</button>
                       </div>
-                      <div>
-                        <strong>Étapes</strong>
-                        <ol>
-                          {[...(version.steps || [])].sort((a, b) => a.order - b.order).map((s, index) => <li key={index}>{s.instruction}</li>)}
-                        </ol>
+                      <p className="muted">
+                        Source : {version.source_name || version.source_file_name || version.source_url || version.source_type}
+                        {version.servings ? ` · Rendement : ${version.servings}` : ''}
+                      </p>
+
+                      {baseServings ? (
+                        <div className="scaleBox">
+                          <strong>Adapter les quantités</strong>
+                          <div className="row">
+                            <span className="muted">Base : {version.servings}</span>
+                            <input
+                              className="input scaleInput"
+                              inputMode="decimal"
+                              placeholder="Portions souhaitées"
+                              value={targets[version.id] || ''}
+                              onChange={(e) => setTargets({ ...targets, [version.id]: e.target.value })}
+                            />
+                            {factor !== 1 ? <span className="badge">× {factor.toFixed(2).replace('.', ',')}</span> : null}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div className="columns">
+                        <div>
+                          <strong>Ingrédients</strong>
+                          <ul>
+                            {(version.ingredients || []).map((i, index) => (
+                              <li key={index}>{[scaledQuantity(i.quantity, factor), i.unit, i.item].filter(Boolean).join(' ')}{i.note ? ` · ${i.note}` : ''}</li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div>
+                          <strong>Étapes</strong>
+                          <ol>
+                            {[...(version.steps || [])].sort((a, b) => a.order - b.order).map((s, index) => <li key={index}>{s.instruction}</li>)}
+                          </ol>
+                        </div>
                       </div>
+                      {version.temperatures?.length ? <p><strong>Températures :</strong> {version.temperatures.join(' · ')}</p> : null}
+                      {version.allergens?.length ? <p><strong>Allergènes :</strong> {version.allergens.join(', ')}</p> : null}
+                      {version.notes ? <p><strong>Notes :</strong> {version.notes}</p> : null}
                     </div>
-                    {version.temperatures?.length ? <p><strong>Températures :</strong> {version.temperatures.join(' · ')}</p> : null}
-                    {version.allergens?.length ? <p><strong>Allergènes :</strong> {version.allergens.join(', ')}</p> : null}
-                    {version.notes ? <p><strong>Notes :</strong> {version.notes}</p> : null}
-                  </div>
-                ))}
+                  )
+                })}
+                <div className="recipeDangerZone">
+                  <button className="button danger" type="button" onClick={() => deleteRecipe(recipe)}>Supprimer toute la fiche</button>
+                </div>
               </div>
             ) : null}
           </article>
