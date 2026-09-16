@@ -4,12 +4,36 @@ import { getDb } from '@/lib/db'
 
 export const runtime = 'nodejs'
 
+function normalizeQuestion(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+function isRecipeListQuestion(question: string) {
+  const q = normalizeQuestion(question)
+  return (
+    q.includes('quelles recettes') ||
+    q.includes('quelle recette') && q.includes('enregistr') ||
+    q.includes('liste des recettes') ||
+    q.includes('liste mes recettes') ||
+    q.includes('recettes enregistrees') ||
+    q.includes('recettes sauvegardees') ||
+    q.includes('recettes dans le repertoire') ||
+    q.includes('recettes dans mon repertoire') ||
+    q.includes('combien de recettes')
+  )
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { question } = await request.json()
     if (!question?.trim()) return NextResponse.json({ error: 'Question vide' }, { status: 400 })
 
     let libraryContext = 'Le répertoire est vide pour le moment.'
+    let libraryRows: any[] = []
 
     try {
       const db = getDb()
@@ -33,13 +57,30 @@ export async function POST(request: NextRequest) {
         from recipe_groups g
         left join recipe_versions v on v.recipe_id = g.id
         group by g.id
-        order by g.updated_at desc
-        limit 60
+        order by g.canonical_name asc
+        limit 200
       `)
 
-      if (result.rows.length) libraryContext = JSON.stringify(result.rows)
+      libraryRows = result.rows
+      if (libraryRows.length) libraryContext = JSON.stringify(libraryRows)
     } catch {
-      // L'assistant reste utilisable même avant la configuration de Neon.
+      // L'assistant reste utilisable même si Neon est temporairement indisponible.
+    }
+
+    if (isRecipeListQuestion(question)) {
+      if (!libraryRows.length) {
+        return NextResponse.json({ answer: 'Aucune recette n’est enregistrée dans ton répertoire pour le moment.' })
+      }
+
+      const lines = libraryRows.map((recipe) => {
+        const versions = Array.isArray(recipe.recipe_versions) ? recipe.recipe_versions.length : 0
+        const versionText = `${versions} version${versions === 1 ? '' : 's'}`
+        return `• ${recipe.canonical_name} — ${recipe.category} — ${versionText}`
+      })
+
+      return NextResponse.json({
+        answer: `Tu as ${libraryRows.length} recette${libraryRows.length === 1 ? '' : 's'} enregistrée${libraryRows.length === 1 ? '' : 's'} :\n\n${lines.join('\n')}`,
+      })
     }
 
     const prompt = `Tu es un assistant culinaire professionnel, précis et concis.
