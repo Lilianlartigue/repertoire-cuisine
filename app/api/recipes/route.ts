@@ -29,6 +29,7 @@ const editSchema = z.object({
   temperatures: z.array(z.string()).default([]),
   allergens: z.array(z.string()).default([]),
   notes: z.string().nullable().optional(),
+  dressage: z.string().nullable().optional(),
 })
 
 const deleteSchema = z.object({ recipeId: z.string().uuid(), versionId: z.string().uuid().optional() })
@@ -50,6 +51,7 @@ const versionJson = `json_build_object(
   'temperatures', v.temperatures,
   'allergens', v.allergens,
   'notes', v.notes,
+  'dressage', to_jsonb(v)->>'dressage',
   'raw_excerpt', v.raw_excerpt,
   'created_at', v.created_at
 )`
@@ -126,8 +128,8 @@ export async function PATCH(request: NextRequest) {
     await db.query(
       `update recipe_versions
        set servings = $1, ingredients = $2::jsonb, equipment = $3::jsonb, steps = $4::jsonb,
-           times = $5::jsonb, temperatures = $6::jsonb, allergens = $7, notes = $8
-       where id = $9 and recipe_id = $10`,
+           times = $5::jsonb, temperatures = $6::jsonb, allergens = $7, notes = $8, dressage = $9
+       where id = $10 and recipe_id = $11`,
       [
         body.servings || null,
         JSON.stringify(body.ingredients),
@@ -137,6 +139,7 @@ export async function PATCH(request: NextRequest) {
         JSON.stringify(body.temperatures),
         body.allergens,
         body.notes || null,
+        body.dressage || null,
         body.versionId,
         body.recipeId,
       ]
@@ -145,6 +148,9 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true })
   } catch (error: any) {
     if (error?.name === 'ZodError') return NextResponse.json({ error: 'Certains champs de la recette sont invalides.' }, { status: 422 })
+    if (error?.code === '42703') {
+      return NextResponse.json({ error: 'La mise à jour Neon pour le champ dressage doit être appliquée.' }, { status: 409 })
+    }
     return NextResponse.json({ error: error.message || 'Impossible de modifier la recette' }, { status: 500 })
   }
 }
