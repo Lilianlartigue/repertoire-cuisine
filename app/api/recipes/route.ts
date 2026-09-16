@@ -99,12 +99,37 @@ async function readRecipes(db: any) {
   }
 }
 
+async function readDuplicateCandidates(db: any) {
+  try {
+    return await db.query(`
+      select
+        a.id as recipe_a_id,
+        a.canonical_name as recipe_a_name,
+        b.id as recipe_b_id,
+        b.canonical_name as recipe_b_name,
+        round(similarity(lower(a.canonical_name), lower(b.canonical_name))::numeric, 2)::float as similarity
+      from recipe_groups a
+      join recipe_groups b on a.id < b.id
+      where similarity(lower(a.canonical_name), lower(b.canonical_name)) >= 0.50
+      order by similarity desc, a.canonical_name asc
+      limit 30
+    `)
+  } catch (error: any) {
+    if (error?.code === '42883' || error?.code === '0A000') return { rows: [] }
+    throw error
+  }
+}
+
 export async function GET() {
   try {
-    const result = await readRecipes(getDb())
-    return NextResponse.json({ recipes: result.rows })
+    const db = getDb()
+    const [result, duplicates] = await Promise.all([
+      readRecipes(db),
+      readDuplicateCandidates(db),
+    ])
+    return NextResponse.json({ recipes: result.rows, duplicate_candidates: duplicates.rows })
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Erreur répertoire', recipes: [] }, { status: 500 })
+    return NextResponse.json({ error: error.message || 'Erreur répertoire', recipes: [], duplicate_candidates: [] }, { status: 500 })
   }
 }
 
