@@ -4,6 +4,24 @@ import { FormEvent, useState } from 'react'
 
 type Saved = { id: string; name: string; version: string; existing: boolean }
 type Ingredient = { item: string; quantity: string; unit: string; note: string }
+type PreviewIngredient = { item: string; quantity?: string | null; unit?: string | null; note?: string | null }
+type PreviewStep = { order: number; instruction: string }
+type PreviewRecipe = {
+  canonicalName: string
+  displayName: string
+  category: string
+  tags: string[]
+  servings?: string | null
+  ingredients: PreviewIngredient[]
+  equipment: string[]
+  steps: PreviewStep[]
+  times: Record<string, string | null>
+  temperatures: string[]
+  allergens: string[]
+  notes?: string | null
+  rawExcerpt?: string | null
+}
+type PreviewSource = { type: 'url' | 'pdf' | 'image' | 'manual'; name?: string; url?: string; fileName?: string }
 
 const categories = [
   'Entrées', 'Poissons', 'Viandes', 'Garnitures', 'Sauces', 'Pâtes et appareils',
@@ -17,6 +35,8 @@ export default function ImportPage() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [saved, setSaved] = useState<Saved[]>([])
+  const [previewRecipes, setPreviewRecipes] = useState<PreviewRecipe[]>([])
+  const [previewSource, setPreviewSource] = useState<PreviewSource | null>(null)
 
   const [name, setName] = useState('')
   const [category, setCategory] = useState('Autres')
@@ -30,18 +50,25 @@ export default function ImportPage() {
   ])
   const [steps, setSteps] = useState<string[]>([''])
 
+  function clearPreview() {
+    setPreviewRecipes([])
+    setPreviewSource(null)
+  }
+
   async function importFile(e: FormEvent) {
     e.preventDefault()
     if (!file) return
-    setLoading(true); setMessage('Analyse de la feuille…'); setSaved([])
+    setLoading(true); setMessage('Analyse de la feuille…'); setSaved([]); clearPreview()
     try {
       const form = new FormData()
       form.append('file', file)
+      form.append('preview', 'true')
       const response = await fetch('/api/import', { method: 'POST', body: form })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Import impossible')
-      setSaved(data.saved || [])
-      setMessage(`${data.detected} préparation${data.detected > 1 ? 's' : ''} détectée${data.detected > 1 ? 's' : ''} et rangée${data.detected > 1 ? 's' : ''}.`)
+      setPreviewRecipes(data.recipes || [])
+      setPreviewSource(data.source || null)
+      setMessage(`${data.detected} préparation${data.detected > 1 ? 's' : ''} détectée${data.detected > 1 ? 's' : ''}. Vérifie avant d’enregistrer.`)
     } catch (error: any) {
       setMessage(`Erreur : ${error.message}`)
     } finally { setLoading(false) }
@@ -50,15 +77,55 @@ export default function ImportPage() {
   async function importUrl(e: FormEvent) {
     e.preventDefault()
     if (!url.trim()) return
-    setLoading(true); setMessage('Lecture du site…'); setSaved([])
+    setLoading(true); setMessage('Lecture du site…'); setSaved([]); clearPreview()
     try {
       const response = await fetch('/api/import', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, preview: true }),
       })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Import impossible')
+      setPreviewRecipes(data.recipes || [])
+      setPreviewSource(data.source || null)
+      setMessage(`${data.detected} préparation${data.detected > 1 ? 's' : ''} détectée${data.detected > 1 ? 's' : ''}. Vérifie avant d’enregistrer.`)
+    } catch (error: any) {
+      setMessage(`Erreur : ${error.message}`)
+    } finally { setLoading(false) }
+  }
+
+  function updatePreviewRecipe(index: number, patch: Partial<PreviewRecipe>) {
+    setPreviewRecipes((current) => current.map((recipe, i) => i === index ? { ...recipe, ...patch } : recipe))
+  }
+
+  function updatePreviewIngredient(recipeIndex: number, ingredientIndex: number, field: keyof PreviewIngredient, value: string) {
+    const recipe = previewRecipes[recipeIndex]
+    if (!recipe) return
+    const next = [...recipe.ingredients]
+    next[ingredientIndex] = { ...next[ingredientIndex], [field]: value }
+    updatePreviewRecipe(recipeIndex, { ingredients: next })
+  }
+
+  function updatePreviewStep(recipeIndex: number, stepIndex: number, value: string) {
+    const recipe = previewRecipes[recipeIndex]
+    if (!recipe) return
+    const next = [...recipe.steps]
+    next[stepIndex] = { order: stepIndex + 1, instruction: value }
+    updatePreviewRecipe(recipeIndex, { steps: next })
+  }
+
+  async function savePreview() {
+    if (!previewRecipes.length || !previewSource) return
+    setLoading(true); setMessage('Enregistrement dans le répertoire…'); setSaved([])
+    try {
+      const response = await fetch('/api/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ savePreview: { recipes: previewRecipes, source: previewSource } }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Enregistrement impossible')
       setSaved(data.saved || [])
-      setMessage(`${data.detected} préparation${data.detected > 1 ? 's' : ''} détectée${data.detected > 1 ? 's' : ''} et rangée${data.detected > 1 ? 's' : ''}.`)
+      setMessage(`${data.detected} préparation${data.detected > 1 ? 's' : ''} enregistrée${data.detected > 1 ? 's' : ''}.`)
+      clearPreview()
     } catch (error: any) {
       setMessage(`Erreur : ${error.message}`)
     } finally { setLoading(false) }
@@ -144,16 +211,84 @@ export default function ImportPage() {
             <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={(e) => setFile(e.target.files?.[0] || null)} />
             {file ? <p>{file.name}</p> : null}
           </div>
-          <button className="button" style={{ marginTop: 14 }} disabled={!file || loading}>Analyser et ajouter</button>
+          <button className="button" style={{ marginTop: 14 }} disabled={!file || loading}>Analyser</button>
         </form>
 
         <form className="card" onSubmit={importUrl}>
           <h2>Depuis un site</h2>
-          <p className="muted">Colle le lien d’une recette. L’IA la remettra dans le même format que les autres.</p>
+          <p className="muted">Colle le lien d’une recette. Le site l’analyse puis te montre la fiche avant de l’enregistrer.</p>
           <input className="input" type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
-          <button className="button" style={{ marginTop: 14 }} disabled={!url.trim() || loading}>Lire et ajouter</button>
+          <button className="button" style={{ marginTop: 14 }} disabled={!url.trim() || loading}>Analyser</button>
         </form>
       </div>
+
+      {previewRecipes.length ? (
+        <div className="card previewPanel" style={{ marginTop: 18 }}>
+          <div className="row" style={{ justifyContent: 'space-between' }}>
+            <div>
+              <div className="eyebrow">Avant enregistrement</div>
+              <h2>Vérifie les fiches détectées</h2>
+              <p className="muted">Tu peux corriger le nom, la catégorie, le rendement, les ingrédients et les étapes.</p>
+            </div>
+            <button className="button secondary" type="button" onClick={clearPreview}>Annuler</button>
+          </div>
+
+          <div className="grid" style={{ marginTop: 18 }}>
+            {previewRecipes.map((recipe, recipeIndex) => (
+              <div className="detectedItem" key={`${recipe.canonicalName}-${recipeIndex}`}>
+                <div className="grid grid2">
+                  <label>Nom
+                    <input className="input" value={recipe.displayName} onChange={(e) => updatePreviewRecipe(recipeIndex, { displayName: e.target.value, canonicalName: e.target.value })} />
+                  </label>
+                  <label>Catégorie
+                    <select className="select" value={recipe.category} onChange={(e) => updatePreviewRecipe(recipeIndex, { category: e.target.value })}>
+                      {categories.map((item) => <option key={item}>{item}</option>)}
+                    </select>
+                  </label>
+                  <label>Rendement / portions
+                    <input className="input" value={recipe.servings || ''} onChange={(e) => updatePreviewRecipe(recipeIndex, { servings: e.target.value })} />
+                  </label>
+                  <label>Tags
+                    <input className="input" value={(recipe.tags || []).join(', ')} onChange={(e) => updatePreviewRecipe(recipeIndex, { tags: e.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} />
+                  </label>
+                </div>
+
+                <h3>Ingrédients</h3>
+                <div className="editList">
+                  {(recipe.ingredients || []).map((ingredient, ingredientIndex) => (
+                    <div className="ingredientEdit" key={ingredientIndex}>
+                      <input className="input" placeholder="Quantité" value={ingredient.quantity || ''} onChange={(e) => updatePreviewIngredient(recipeIndex, ingredientIndex, 'quantity', e.target.value)} />
+                      <input className="input" placeholder="Unité" value={ingredient.unit || ''} onChange={(e) => updatePreviewIngredient(recipeIndex, ingredientIndex, 'unit', e.target.value)} />
+                      <input className="input" placeholder="Ingrédient" value={ingredient.item} onChange={(e) => updatePreviewIngredient(recipeIndex, ingredientIndex, 'item', e.target.value)} />
+                      <input className="input" placeholder="Note" value={ingredient.note || ''} onChange={(e) => updatePreviewIngredient(recipeIndex, ingredientIndex, 'note', e.target.value)} />
+                      <button className="button secondary" type="button" onClick={() => updatePreviewRecipe(recipeIndex, { ingredients: recipe.ingredients.filter((_, i) => i !== ingredientIndex) })}>Retirer</button>
+                    </div>
+                  ))}
+                  <button className="button secondary" type="button" onClick={() => updatePreviewRecipe(recipeIndex, { ingredients: [...recipe.ingredients, { item: '', quantity: '', unit: '', note: '' }] })}>+ Ingrédient</button>
+                </div>
+
+                <h3>Étapes</h3>
+                <div className="editList">
+                  {(recipe.steps || []).map((step, stepIndex) => (
+                    <div className="stepEdit" key={stepIndex}>
+                      <span className="stepNumber">{stepIndex + 1}</span>
+                      <textarea className="textarea" value={step.instruction} onChange={(e) => updatePreviewStep(recipeIndex, stepIndex, e.target.value)} />
+                      <button className="button secondary" type="button" onClick={() => updatePreviewRecipe(recipeIndex, { steps: recipe.steps.filter((_, i) => i !== stepIndex).map((item, i) => ({ ...item, order: i + 1 })) })}>Retirer</button>
+                    </div>
+                  ))}
+                  <button className="button secondary" type="button" onClick={() => updatePreviewRecipe(recipeIndex, { steps: [...recipe.steps, { order: recipe.steps.length + 1, instruction: '' }] })}>+ Étape</button>
+                </div>
+
+                <button className="button danger" type="button" onClick={() => setPreviewRecipes((current) => current.filter((_, i) => i !== recipeIndex))}>Ignorer cette préparation</button>
+              </div>
+            ))}
+          </div>
+
+          <button className="button" style={{ marginTop: 18 }} type="button" disabled={loading || !previewRecipes.length} onClick={savePreview}>
+            {loading ? 'Enregistrement…' : 'Enregistrer les fiches validées'}
+          </button>
+        </div>
+      ) : null}
 
       <form className="card" onSubmit={addManualRecipe} style={{ marginTop: 18 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
