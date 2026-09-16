@@ -22,6 +22,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <nav>
               <Link href="/assistant">Assistant cuisine</Link>
               <Link href="/recipes">Mes recettes</Link>
+              <Link href="/preferred">Versions préférées</Link>
               <Link href="/import">Ajouter une recette</Link>
             </nav>
           </aside>
