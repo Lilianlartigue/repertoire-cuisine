@@ -7,6 +7,8 @@
   --accent: #5f7d67;
   --accent-soft: #dfe9df;
   --warm: #efe2cc;
+  --danger: #9a4d43;
+  --danger-soft: #f4dfdb;
   --shadow: 0 14px 40px rgba(57, 67, 60, 0.08);
 }
 
@@ -63,6 +65,7 @@ p { line-height: 1.55; }
   font-weight: 750; cursor: pointer;
 }
 .button.secondary { background: var(--accent-soft); color: #395044; }
+.button.danger { background: var(--danger-soft); color: #733a33; }
 .button:disabled { opacity: .55; cursor: default; }
 
 .chat { display: grid; gap: 14px; margin: 18px 0; }
@@ -81,6 +84,26 @@ p { line-height: 1.55; }
 .columns { display: grid; grid-template-columns: 1fr 1.25fr; gap: 22px; }
 ul, ol { padding-left: 20px; }
 li { margin-bottom: 7px; line-height: 1.45; }
+.editHeader { justify-content: flex-start; }
+.editHeader h4 { margin-right: auto; }
+.scaleBox { margin: 14px 0 18px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 14px; background: #faf7ef; }
+.scaleBox strong { display: block; margin-bottom: 9px; }
+.scaleInput { max-width: 190px; }
+.recipeDangerZone { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+
+.editorOverlay {
+  position: fixed; inset: 0; z-index: 50; padding: 24px; overflow-y: auto;
+  background: rgba(36,49,43,.42); backdrop-filter: blur(4px);
+}
+.recipeEditor { width: min(1050px, 100%); margin: 0 auto; cursor: default; }
+.editorTitle { justify-content: space-between; margin-bottom: 18px; }
+.editorTitle h2 { margin-bottom: 0; }
+.editList { display: grid; gap: 10px; margin-bottom: 22px; }
+.ingredientEdit { display: grid; grid-template-columns: 120px 100px minmax(180px, 1.4fr) minmax(160px, 1fr) auto; gap: 8px; align-items: center; }
+.stepEdit { display: grid; grid-template-columns: 32px 1fr auto; gap: 10px; align-items: start; }
+.stepNumber { font-weight: 800; padding-top: 13px; }
+.editorActions { margin-top: 22px; }
+.recipeEditor label { display: grid; gap: 7px; font-weight: 700; }
 
 .dropzone {
   border: 2px dashed #c6cec3; border-radius: 18px; padding: 32px; text-align: center; background: rgba(255,255,255,.45);
@@ -98,4 +121,8 @@ li { margin-bottom: 7px; line-height: 1.45; }
   .content { padding: 24px 16px 38px; }
   .grid2, .recipeGrid, .columns { grid-template-columns: 1fr; }
   .recipeToolbar { grid-template-columns: 1fr; }
+  .ingredientEdit, .stepEdit { grid-template-columns: 1fr; }
+  .stepNumber { padding-top: 0; }
+  .editorOverlay { padding: 10px; }
+  .scaleInput { max-width: none; }
 }
