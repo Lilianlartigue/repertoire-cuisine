@@ -30,6 +30,10 @@ create table if not exists recipe_versions (
   created_at timestamptz not null default now()
 );
 
+alter table recipe_groups
+  add column if not exists preferred_version_id uuid references recipe_versions(id) on delete set null;
+
 create index if not exists recipe_groups_category_idx on recipe_groups(category);
 create index if not exists recipe_groups_name_idx on recipe_groups(canonical_name);
 create index if not exists recipe_versions_recipe_id_idx on recipe_versions(recipe_id);
+create index if not exists recipe_groups_preferred_version_idx on recipe_groups(preferred_version_id);
