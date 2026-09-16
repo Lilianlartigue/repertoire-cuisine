@@ -15,12 +15,11 @@ Site indépendant pour centraliser des fiches techniques et recettes dans un for
 
 Créer un fichier `.env.local` à partir de `.env.example` et renseigner :
 
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `GEMINI_API_KEY`
-- `GEMINI_MODEL` (par défaut `gemini-3.8-flash`)
+- `DATABASE_URL` : chaîne de connexion Neon PostgreSQL.
+- `GEMINI_API_KEY`.
+- `GEMINI_MODEL` (par défaut `gemini-3.8-flash`).
 
-Exécuter ensuite `supabase/schema.sql` dans l'éditeur SQL du projet Supabase.
+Exécuter ensuite `neon/schema.sql` dans l'éditeur SQL du projet Neon.
 
 ## Démarrage
 
@@ -29,4 +28,4 @@ npm install
 npm run dev
 ```
 
-Le projet utilise Next.js App Router et est prévu pour être déployé sur Vercel.
+Le projet utilise Next.js App Router, Neon PostgreSQL et Gemini, et est prévu pour être déployé sur Vercel.
