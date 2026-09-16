@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { askGemini } from '@/lib/gemini'
-import { getSupabaseAdmin } from '@/lib/cuisine'
+import { getDb } from '@/lib/db'
 
 export const runtime = 'nodejs'
 
@@ -10,16 +10,36 @@ export async function POST(request: NextRequest) {
     if (!question?.trim()) return NextResponse.json({ error: 'Question vide' }, { status: 400 })
 
     let libraryContext = 'Le répertoire est vide pour le moment.'
+
     try {
-      const supabase = getSupabaseAdmin()
-      const { data } = await supabase
-        .from('recipe_groups')
-        .select('canonical_name, category, tags, recipe_versions(version_label, servings, ingredients, steps, notes)')
-        .order('updated_at', { ascending: false })
-        .limit(60)
-      if (data?.length) libraryContext = JSON.stringify(data)
+      const db = getDb()
+      const result = await db.query(`
+        select
+          g.canonical_name,
+          g.category,
+          g.tags,
+          coalesce(
+            json_agg(
+              json_build_object(
+                'version_label', v.version_label,
+                'servings', v.servings,
+                'ingredients', v.ingredients,
+                'steps', v.steps,
+                'notes', v.notes
+              ) order by v.created_at asc
+            ) filter (where v.id is not null),
+            '[]'::json
+          ) as recipe_versions
+        from recipe_groups g
+        left join recipe_versions v on v.recipe_id = g.id
+        group by g.id
+        order by g.updated_at desc
+        limit 60
+      `)
+
+      if (result.rows.length) libraryContext = JSON.stringify(result.rows)
     } catch {
-      // L'assistant reste utilisable même avant la configuration de Supabase.
+      // L'assistant reste utilisable même avant la configuration de Neon.
     }
 
     const prompt = `Tu es un assistant culinaire professionnel, précis et concis.
