@@ -34,6 +34,11 @@ const editSchema = z.object({
   notes: z.string().nullable().optional(),
 })
 
+const deleteSchema = z.object({
+  recipeId: z.string().uuid(),
+  versionId: z.string().uuid().optional(),
+})
+
 export async function GET() {
   try {
     const db = getDb()
@@ -140,5 +145,41 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Certains champs de la recette sont invalides.' }, { status: 422 })
     }
     return NextResponse.json({ error: error.message || 'Impossible de modifier la recette' }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = deleteSchema.parse(await request.json())
+    const db = getDb()
+
+    if (!body.versionId) {
+      const deleted = await db.query('delete from recipe_groups where id = $1 returning id', [body.recipeId])
+      if (!deleted.rows[0]) return NextResponse.json({ error: 'Recette introuvable' }, { status: 404 })
+      return NextResponse.json({ ok: true, deleted: 'recipe' })
+    }
+
+    const deletedVersion = await db.query(
+      'delete from recipe_versions where id = $1 and recipe_id = $2 returning id',
+      [body.versionId, body.recipeId]
+    )
+    if (!deletedVersion.rows[0]) return NextResponse.json({ error: 'Version introuvable' }, { status: 404 })
+
+    const remaining = await db.query(
+      'select count(*)::int as count from recipe_versions where recipe_id = $1',
+      [body.recipeId]
+    )
+    if (Number(remaining.rows[0]?.count ?? 0) === 0) {
+      await db.query('delete from recipe_groups where id = $1', [body.recipeId])
+      return NextResponse.json({ ok: true, deleted: 'last-version-and-recipe' })
+    }
+
+    await db.query('update recipe_groups set updated_at = now() where id = $1', [body.recipeId])
+    return NextResponse.json({ ok: true, deleted: 'version' })
+  } catch (error: any) {
+    if (error?.name === 'ZodError') {
+      return NextResponse.json({ error: 'Demande de suppression invalide.' }, { status: 422 })
+    }
+    return NextResponse.json({ error: error.message || 'Impossible de supprimer' }, { status: 500 })
   }
 }
