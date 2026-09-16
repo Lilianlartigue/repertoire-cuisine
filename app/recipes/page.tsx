@@ -27,6 +27,7 @@ type Recipe = {
   canonical_name: string
   category: string
   tags: string[]
+  preferred_version_id?: string | null
   recipe_versions: Version[]
 }
 
@@ -195,6 +196,24 @@ export default function RecipesPage() {
     }
   }
 
+  async function setPreferredVersion(recipe: Recipe, version: Version) {
+    const isPreferred = recipe.preferred_version_id === version.id
+    setMessage(isPreferred ? 'Retrait du favori…' : 'Mise en favori…')
+    try {
+      const response = await fetch('/api/recipes', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipeId: recipe.id, versionId: isPreferred ? null : version.id }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Impossible de modifier le favori')
+      await loadRecipes()
+      setMessage(isPreferred ? 'Version retirée des favoris.' : 'Version favorite enregistrée.')
+    } catch (error: any) {
+      setMessage(`Erreur : ${error.message}`)
+    }
+  }
+
   async function deleteRecipe(recipe: Recipe) {
     if (!window.confirm(`Supprimer complètement « ${recipe.canonical_name} » et toutes ses versions ?`)) return
     setMessage('Suppression…')
@@ -263,11 +282,16 @@ export default function RecipesPage() {
                   const baseServings = firstNumber(version.servings)
                   const target = Number((targets[version.id] || '').replace(',', '.'))
                   const factor = baseServings && Number.isFinite(target) && target > 0 ? target / baseServings : 1
+                  const isPreferred = recipe.preferred_version_id === version.id
 
                   return (
                     <div className="version" key={version.id}>
                       <div className="row editHeader">
                         <h4>{version.version_label}</h4>
+                        {isPreferred ? <span className="badge">★ Version favorite</span> : null}
+                        <button className="button secondary" type="button" onClick={() => setPreferredVersion(recipe, version)}>
+                          {isPreferred ? '★ Retirer des favoris' : '☆ Mettre en favori'}
+                        </button>
                         <button className="button secondary" type="button" onClick={() => startEdit(recipe, version)}>Modifier</button>
                         <button className="button danger" type="button" onClick={() => deleteVersion(recipe, version)}>Supprimer la version</button>
                       </div>
