@@ -20,6 +20,7 @@ type Version = {
   temperatures: string[]
   allergens: string[]
   notes?: string | null
+  dressage?: string | null
 }
 
 type Recipe = {
@@ -48,6 +49,7 @@ type EditState = {
   temperatures: string
   allergens: string
   notes: string
+  dressage: string
 }
 
 function splitList(value: string) {
@@ -109,6 +111,7 @@ export default function RecipesPage() {
       ...(v.allergens || []),
       ...(v.steps || []).map((s) => s.instruction),
       v.notes || '',
+      v.dressage || '',
     ]).join(' ')
     const haystack = `${r.canonical_name} ${r.category} ${(r.tags || []).join(' ')} ${versionText}`.toLowerCase()
     return haystack.includes(search.toLowerCase()) && (category === 'Toutes' || r.category === category)
@@ -133,6 +136,7 @@ export default function RecipesPage() {
       temperatures: (version.temperatures || []).join(', '),
       allergens: (version.allergens || []).join(', '),
       notes: version.notes || '',
+      dressage: version.dressage || '',
     })
   }
 
@@ -148,6 +152,16 @@ export default function RecipesPage() {
     const steps = [...editing.steps]
     steps[index] = { order: index + 1, instruction: value }
     setEditing({ ...editing, steps })
+  }
+
+  function printVersion(versionId: string) {
+    const target = document.getElementById(`recipe-version-${versionId}`)
+    if (!target) return
+    document.body.classList.add('printingRecipe')
+    target.classList.add('printTarget')
+    window.print()
+    target.classList.remove('printTarget')
+    document.body.classList.remove('printingRecipe')
   }
 
   async function saveEdit() {
@@ -176,6 +190,7 @@ export default function RecipesPage() {
       temperatures: splitList(editing.temperatures),
       allergens: splitList(editing.allergens),
       notes: editing.notes.trim() || null,
+      dressage: editing.dressage.trim() || null,
     }
 
     try {
@@ -285,23 +300,30 @@ export default function RecipesPage() {
                   const isPreferred = recipe.preferred_version_id === version.id
 
                   return (
-                    <div className="version" key={version.id}>
-                      <div className="row editHeader">
+                    <div className="version" id={`recipe-version-${version.id}`} key={version.id}>
+                      <div className="printOnly printRecipeHead">
+                        <h1>{recipe.canonical_name}</h1>
+                        <p>{recipe.category} · {version.version_label}{version.servings ? ` · Rendement : ${version.servings}` : ''}</p>
+                      </div>
+                      <div className="row editHeader noPrint">
                         <h4>{version.version_label}</h4>
                         {isPreferred ? <span className="badge">★ Version favorite</span> : null}
-                        <button className="button secondary" type="button" onClick={() => setPreferredVersion(recipe, version)}>
-                          {isPreferred ? '★ Retirer des favoris' : '☆ Mettre en favori'}
-                        </button>
+                        {recipe.recipe_versions.length > 1 ? (
+                          <button className="button secondary" type="button" onClick={() => setPreferredVersion(recipe, version)}>
+                            {isPreferred ? '★ Retirer des favoris' : '☆ Mettre en favori'}
+                          </button>
+                        ) : null}
                         <button className="button secondary" type="button" onClick={() => startEdit(recipe, version)}>Modifier</button>
+                        <button className="button secondary" type="button" onClick={() => printVersion(version.id)}>Imprimer</button>
                         <button className="button danger" type="button" onClick={() => deleteVersion(recipe, version)}>Supprimer la version</button>
                       </div>
-                      <p className="muted">
+                      <p className="muted noPrint">
                         Source : {version.source_name || version.source_file_name || version.source_url || version.source_type}
                         {version.servings ? ` · Rendement : ${version.servings}` : ''}
                       </p>
 
                       {baseServings ? (
-                        <div className="scaleBox">
+                        <div className="scaleBox noPrint">
                           <strong>Adapter les quantités</strong>
                           <div className="row">
                             <span className="muted">Base : {version.servings}</span>
@@ -335,11 +357,12 @@ export default function RecipesPage() {
                       </div>
                       {version.temperatures?.length ? <p><strong>Températures :</strong> {version.temperatures.join(' · ')}</p> : null}
                       {version.allergens?.length ? <p><strong>Allergènes :</strong> {version.allergens.join(', ')}</p> : null}
+                      {version.dressage ? <p className="dressageBlock"><strong>Dressage :</strong> {version.dressage}</p> : null}
                       {version.notes ? <p><strong>Notes :</strong> {version.notes}</p> : null}
                     </div>
                   )
                 })}
-                <div className="recipeDangerZone">
+                <div className="recipeDangerZone noPrint">
                   <button className="button danger" type="button" onClick={() => deleteRecipe(recipe)}>Supprimer toute la fiche</button>
                 </div>
               </div>
@@ -402,6 +425,7 @@ export default function RecipesPage() {
               <label>Allergènes, séparés par des virgules<input className="input" value={editing.allergens} onChange={(e) => setEditing({ ...editing, allergens: e.target.value })} /></label>
             </div>
 
+            <label>Dressage<textarea className="textarea" value={editing.dressage} onChange={(e) => setEditing({ ...editing, dressage: e.target.value })} placeholder="Décris le montage, la disposition et les finitions dans l’assiette…" /></label>
             <label>Notes<textarea className="textarea" value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></label>
 
             <div className="row editorActions">
