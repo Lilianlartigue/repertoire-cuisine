@@ -1,27 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-export function proxy(request: NextRequest) {
+const COOKIE_NAME = 'rc_session'
+
+async function sessionToken(username: string, password: string) {
+  const data = new TextEncoder().encode(`${username}:${password}:repertoire-cuisine-session`)
+  const digest = await crypto.subtle.digest('SHA-256', data)
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+export async function proxy(request: NextRequest) {
   const password = process.env.SITE_PASSWORD
   if (!password) return NextResponse.next()
 
   const username = process.env.SITE_USER || 'lilian'
-  const authorization = request.headers.get('authorization')
+  const pathname = request.nextUrl.pathname
 
-  if (authorization?.startsWith('Basic ')) {
-    try {
-      const decoded = atob(authorization.slice(6))
-      if (decoded === `${username}:${password}`) return NextResponse.next()
-    } catch {
-      // En-tête invalide : on redemande les identifiants.
-    }
+  if (pathname === '/login' || pathname.startsWith('/api/auth/')) {
+    return NextResponse.next()
   }
 
-  return new NextResponse('Accès protégé', {
-    status: 401,
-    headers: {
-      'WWW-Authenticate': 'Basic realm="Répertoire Cuisine", charset="UTF-8"',
-    },
-  })
+  const expected = await sessionToken(username, password)
+  const current = request.cookies.get(COOKIE_NAME)?.value
+
+  if (current === expected) return NextResponse.next()
+
+  const loginUrl = new URL('/login', request.url)
+  loginUrl.searchParams.set('next', `${pathname}${request.nextUrl.search}`)
+  return NextResponse.redirect(loginUrl)
 }
 
 export const config = {
