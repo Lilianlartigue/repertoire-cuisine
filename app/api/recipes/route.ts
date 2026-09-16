@@ -19,10 +19,7 @@ const editSchema = z.object({
     note: z.string().nullable().optional(),
   })).default([]),
   equipment: z.array(z.string()).default([]),
-  steps: z.array(z.object({
-    order: z.number().int().positive(),
-    instruction: z.string().min(1),
-  })).default([]),
+  steps: z.array(z.object({ order: z.number().int().positive(), instruction: z.string().min(1) })).default([]),
   times: z.object({
     preparation: z.string().nullable().optional(),
     cooking: z.string().nullable().optional(),
@@ -34,20 +31,32 @@ const editSchema = z.object({
   notes: z.string().nullable().optional(),
 })
 
-const deleteSchema = z.object({
-  recipeId: z.string().uuid(),
-  versionId: z.string().uuid().optional(),
-})
+const deleteSchema = z.object({ recipeId: z.string().uuid(), versionId: z.string().uuid().optional() })
+const preferredSchema = z.object({ recipeId: z.string().uuid(), versionId: z.string().uuid().nullable() })
 
-const preferredSchema = z.object({
-  recipeId: z.string().uuid(),
-  versionId: z.string().uuid().nullable(),
-})
+const versionJson = `json_build_object(
+  'id', v.id,
+  'recipe_id', v.recipe_id,
+  'version_label', v.version_label,
+  'source_type', v.source_type,
+  'source_name', v.source_name,
+  'source_url', v.source_url,
+  'source_file_name', v.source_file_name,
+  'servings', v.servings,
+  'ingredients', v.ingredients,
+  'equipment', v.equipment,
+  'steps', v.steps,
+  'times', v.times,
+  'temperatures', v.temperatures,
+  'allergens', v.allergens,
+  'notes', v.notes,
+  'raw_excerpt', v.raw_excerpt,
+  'created_at', v.created_at
+)`
 
-export async function GET() {
+async function readRecipes(db: any) {
   try {
-    const db = getDb()
-    const result = await db.query(`
+    return await db.query(`
       select
         g.id,
         g.canonical_name,
@@ -56,27 +65,8 @@ export async function GET() {
         g.preferred_version_id,
         g.updated_at,
         coalesce(
-          json_agg(
-            json_build_object(
-              'id', v.id,
-              'recipe_id', v.recipe_id,
-              'version_label', v.version_label,
-              'source_type', v.source_type,
-              'source_name', v.source_name,
-              'source_url', v.source_url,
-              'source_file_name', v.source_file_name,
-              'servings', v.servings,
-              'ingredients', v.ingredients,
-              'equipment', v.equipment,
-              'steps', v.steps,
-              'times', v.times,
-              'temperatures', v.temperatures,
-              'allergens', v.allergens,
-              'notes', v.notes,
-              'raw_excerpt', v.raw_excerpt,
-              'created_at', v.created_at
-            ) order by (v.id = g.preferred_version_id) desc, v.created_at asc
-          ) filter (where v.id is not null),
+          json_agg(${versionJson} order by (v.id = g.preferred_version_id) desc, v.created_at asc)
+          filter (where v.id is not null),
           '[]'::json
         ) as recipe_versions
       from recipe_groups g
@@ -84,7 +74,32 @@ export async function GET() {
       group by g.id
       order by g.canonical_name asc
     `)
+  } catch (error: any) {
+    if (error?.code !== '42703') throw error
+    return db.query(`
+      select
+        g.id,
+        g.canonical_name,
+        g.category,
+        g.tags,
+        null::uuid as preferred_version_id,
+        g.updated_at,
+        coalesce(
+          json_agg(${versionJson} order by v.created_at asc)
+          filter (where v.id is not null),
+          '[]'::json
+        ) as recipe_versions
+      from recipe_groups g
+      left join recipe_versions v on v.recipe_id = g.id
+      group by g.id
+      order by g.canonical_name asc
+    `)
+  }
+}
 
+export async function GET() {
+  try {
+    const result = await readRecipes(getDb())
     return NextResponse.json({ recipes: result.rows })
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Erreur répertoire', recipes: [] }, { status: 500 })
@@ -96,40 +111,22 @@ export async function PATCH(request: NextRequest) {
     const body = editSchema.parse(await request.json())
     const db = getDb()
 
-    const versionCheck = await db.query(
-      'select id from recipe_versions where id = $1 and recipe_id = $2 limit 1',
-      [body.versionId, body.recipeId]
-    )
-    if (!versionCheck.rows[0]) {
-      return NextResponse.json({ error: 'Version introuvable' }, { status: 404 })
-    }
+    const versionCheck = await db.query('select id from recipe_versions where id = $1 and recipe_id = $2 limit 1', [body.versionId, body.recipeId])
+    if (!versionCheck.rows[0]) return NextResponse.json({ error: 'Version introuvable' }, { status: 404 })
 
     const key = canonicalKey(body.canonicalName)
-    const duplicate = await db.query(
-      'select id from recipe_groups where canonical_key = $1 and id <> $2 limit 1',
-      [key, body.recipeId]
-    )
-    if (duplicate.rows[0]) {
-      return NextResponse.json({ error: 'Une autre fiche utilise déjà ce nom.' }, { status: 409 })
-    }
+    const duplicate = await db.query('select id from recipe_groups where canonical_key = $1 and id <> $2 limit 1', [key, body.recipeId])
+    if (duplicate.rows[0]) return NextResponse.json({ error: 'Une autre fiche utilise déjà ce nom.' }, { status: 409 })
 
     await db.query(
-      `update recipe_groups
-       set canonical_name = $1, canonical_key = $2, category = $3, tags = $4, updated_at = now()
-       where id = $5`,
+      `update recipe_groups set canonical_name = $1, canonical_key = $2, category = $3, tags = $4, updated_at = now() where id = $5`,
       [body.canonicalName, key, body.category, body.tags, body.recipeId]
     )
 
     await db.query(
       `update recipe_versions
-       set servings = $1,
-           ingredients = $2::jsonb,
-           equipment = $3::jsonb,
-           steps = $4::jsonb,
-           times = $5::jsonb,
-           temperatures = $6::jsonb,
-           allergens = $7,
-           notes = $8
+       set servings = $1, ingredients = $2::jsonb, equipment = $3::jsonb, steps = $4::jsonb,
+           times = $5::jsonb, temperatures = $6::jsonb, allergens = $7, notes = $8
        where id = $9 and recipe_id = $10`,
       [
         body.servings || null,
@@ -147,9 +144,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ ok: true })
   } catch (error: any) {
-    if (error?.name === 'ZodError') {
-      return NextResponse.json({ error: 'Certains champs de la recette sont invalides.' }, { status: 422 })
-    }
+    if (error?.name === 'ZodError') return NextResponse.json({ error: 'Certains champs de la recette sont invalides.' }, { status: 422 })
     return NextResponse.json({ error: error.message || 'Impossible de modifier la recette' }, { status: 500 })
   }
 }
@@ -160,13 +155,8 @@ export async function PUT(request: NextRequest) {
     const db = getDb()
 
     if (body.versionId) {
-      const versionCheck = await db.query(
-        'select id from recipe_versions where id = $1 and recipe_id = $2 limit 1',
-        [body.versionId, body.recipeId]
-      )
-      if (!versionCheck.rows[0]) {
-        return NextResponse.json({ error: 'Version introuvable' }, { status: 404 })
-      }
+      const versionCheck = await db.query('select id from recipe_versions where id = $1 and recipe_id = $2 limit 1', [body.versionId, body.recipeId])
+      if (!versionCheck.rows[0]) return NextResponse.json({ error: 'Version introuvable' }, { status: 404 })
     }
 
     const updated = await db.query(
@@ -174,11 +164,11 @@ export async function PUT(request: NextRequest) {
       [body.versionId, body.recipeId]
     )
     if (!updated.rows[0]) return NextResponse.json({ error: 'Recette introuvable' }, { status: 404 })
-
     return NextResponse.json({ ok: true })
   } catch (error: any) {
-    if (error?.name === 'ZodError') {
-      return NextResponse.json({ error: 'Demande invalide.' }, { status: 422 })
+    if (error?.name === 'ZodError') return NextResponse.json({ error: 'Demande invalide.' }, { status: 422 })
+    if (error?.code === '42703') {
+      return NextResponse.json({ error: 'La mise à jour Neon pour les versions préférées doit être appliquée.' }, { status: 409 })
     }
     return NextResponse.json({ error: error.message || 'Impossible de choisir la version préférée' }, { status: 500 })
   }
@@ -195,16 +185,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ ok: true, deleted: 'recipe' })
     }
 
-    const deletedVersion = await db.query(
-      'delete from recipe_versions where id = $1 and recipe_id = $2 returning id',
-      [body.versionId, body.recipeId]
-    )
+    const deletedVersion = await db.query('delete from recipe_versions where id = $1 and recipe_id = $2 returning id', [body.versionId, body.recipeId])
     if (!deletedVersion.rows[0]) return NextResponse.json({ error: 'Version introuvable' }, { status: 404 })
 
-    const remaining = await db.query(
-      'select count(*)::int as count from recipe_versions where recipe_id = $1',
-      [body.recipeId]
-    )
+    const remaining = await db.query('select count(*)::int as count from recipe_versions where recipe_id = $1', [body.recipeId])
     if (Number(remaining.rows[0]?.count ?? 0) === 0) {
       await db.query('delete from recipe_groups where id = $1', [body.recipeId])
       return NextResponse.json({ ok: true, deleted: 'last-version-and-recipe' })
@@ -213,9 +197,7 @@ export async function DELETE(request: NextRequest) {
     await db.query('update recipe_groups set updated_at = now() where id = $1', [body.recipeId])
     return NextResponse.json({ ok: true, deleted: 'version' })
   } catch (error: any) {
-    if (error?.name === 'ZodError') {
-      return NextResponse.json({ error: 'Demande de suppression invalide.' }, { status: 422 })
-    }
+    if (error?.name === 'ZodError') return NextResponse.json({ error: 'Demande de suppression invalide.' }, { status: 422 })
     return NextResponse.json({ error: error.message || 'Impossible de supprimer' }, { status: 500 })
   }
 }
