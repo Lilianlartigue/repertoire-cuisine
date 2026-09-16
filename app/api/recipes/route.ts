@@ -108,6 +108,41 @@ export async function GET() {
   }
 }
 
+async function updateRecipeVersion(db: any, body: z.infer<typeof editSchema>) {
+  const commonValues = [
+    body.servings || null,
+    JSON.stringify(body.ingredients),
+    JSON.stringify(body.equipment),
+    JSON.stringify(body.steps),
+    JSON.stringify(body.times),
+    JSON.stringify(body.temperatures),
+    body.allergens,
+    body.notes || null,
+  ]
+
+  try {
+    await db.query(
+      `update recipe_versions
+       set servings = $1, ingredients = $2::jsonb, equipment = $3::jsonb, steps = $4::jsonb,
+           times = $5::jsonb, temperatures = $6::jsonb, allergens = $7, notes = $8, dressage = $9
+       where id = $10 and recipe_id = $11`,
+      [...commonValues, body.dressage || null, body.versionId, body.recipeId]
+    )
+    return { dressageSaved: true }
+  } catch (error: any) {
+    if (error?.code !== '42703') throw error
+
+    await db.query(
+      `update recipe_versions
+       set servings = $1, ingredients = $2::jsonb, equipment = $3::jsonb, steps = $4::jsonb,
+           times = $5::jsonb, temperatures = $6::jsonb, allergens = $7, notes = $8
+       where id = $9 and recipe_id = $10`,
+      [...commonValues, body.versionId, body.recipeId]
+    )
+    return { dressageSaved: false }
+  }
+}
+
 export async function PATCH(request: NextRequest) {
   try {
     const body = editSchema.parse(await request.json())
@@ -125,32 +160,10 @@ export async function PATCH(request: NextRequest) {
       [body.canonicalName, key, body.category, body.tags, body.recipeId]
     )
 
-    await db.query(
-      `update recipe_versions
-       set servings = $1, ingredients = $2::jsonb, equipment = $3::jsonb, steps = $4::jsonb,
-           times = $5::jsonb, temperatures = $6::jsonb, allergens = $7, notes = $8, dressage = $9
-       where id = $10 and recipe_id = $11`,
-      [
-        body.servings || null,
-        JSON.stringify(body.ingredients),
-        JSON.stringify(body.equipment),
-        JSON.stringify(body.steps),
-        JSON.stringify(body.times),
-        JSON.stringify(body.temperatures),
-        body.allergens,
-        body.notes || null,
-        body.dressage || null,
-        body.versionId,
-        body.recipeId,
-      ]
-    )
-
-    return NextResponse.json({ ok: true })
+    const result = await updateRecipeVersion(db, body)
+    return NextResponse.json({ ok: true, dressageSaved: result.dressageSaved })
   } catch (error: any) {
     if (error?.name === 'ZodError') return NextResponse.json({ error: 'Certains champs de la recette sont invalides.' }, { status: 422 })
-    if (error?.code === '42703') {
-      return NextResponse.json({ error: 'La mise à jour Neon pour le champ dressage doit être appliquée.' }, { status: 409 })
-    }
     return NextResponse.json({ error: error.message || 'Impossible de modifier la recette' }, { status: 500 })
   }
 }
