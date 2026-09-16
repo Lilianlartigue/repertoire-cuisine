@@ -116,6 +116,7 @@ export default function RecipesPage() {
     const haystack = `${r.canonical_name} ${r.category} ${(r.tags || []).join(' ')} ${versionText}`.toLowerCase()
     return haystack.includes(search.toLowerCase()) && (category === 'Toutes' || r.category === category)
   })
+  const openRecipe = recipes.find((recipe) => recipe.id === open) || null
 
   function startEdit(recipe: Recipe, version: Version) {
     setMessage('')
@@ -287,89 +288,102 @@ export default function RecipesPage() {
 
       <div className="recipeGrid">
         {filtered.map((recipe) => (
-          <article className="card recipeCard" key={recipe.id} onClick={() => setOpen(open === recipe.id ? null : recipe.id)}>
+          <article className="card recipeCard" key={recipe.id} onClick={() => setOpen(recipe.id)}>
             <span className="badge">{recipe.category}</span>
             <h3>{recipe.canonical_name}</h3>
             <p className="muted">{recipe.recipe_versions?.length || 0} version{recipe.recipe_versions?.length === 1 ? '' : 's'}</p>
-            {open === recipe.id ? (
-              <div onClick={(e) => e.stopPropagation()}>
-                {(recipe.recipe_versions || []).map((version) => {
-                  const baseServings = firstNumber(version.servings)
-                  const target = Number((targets[version.id] || '').replace(',', '.'))
-                  const factor = baseServings && Number.isFinite(target) && target > 0 ? target / baseServings : 1
-                  const isPreferred = recipe.preferred_version_id === version.id
-
-                  return (
-                    <div className="version" id={`recipe-version-${version.id}`} key={version.id}>
-                      <div className="printOnly printRecipeHead">
-                        <h1>{recipe.canonical_name}</h1>
-                        <p>{recipe.category} · {version.version_label}{version.servings ? ` · Rendement : ${version.servings}` : ''}</p>
-                      </div>
-                      <div className="row editHeader noPrint">
-                        <h4>{version.version_label}</h4>
-                        {isPreferred ? <span className="badge">★ Version favorite</span> : null}
-                        {recipe.recipe_versions.length > 1 ? (
-                          <button className="button secondary" type="button" onClick={() => setPreferredVersion(recipe, version)}>
-                            {isPreferred ? '★ Retirer des favoris' : '☆ Mettre en favori'}
-                          </button>
-                        ) : null}
-                        <button className="button secondary" type="button" onClick={() => startEdit(recipe, version)}>Modifier</button>
-                        <button className="button secondary" type="button" onClick={() => printVersion(version.id)}>Imprimer</button>
-                        <button className="button danger" type="button" onClick={() => deleteVersion(recipe, version)}>Supprimer la version</button>
-                      </div>
-                      <p className="muted noPrint">
-                        Source : {version.source_name || version.source_file_name || version.source_url || version.source_type}
-                        {version.servings ? ` · Rendement : ${version.servings}` : ''}
-                      </p>
-
-                      {baseServings ? (
-                        <div className="scaleBox noPrint">
-                          <strong>Adapter les quantités</strong>
-                          <div className="row">
-                            <span className="muted">Base : {version.servings}</span>
-                            <input
-                              className="input scaleInput"
-                              inputMode="decimal"
-                              placeholder="Portions souhaitées"
-                              value={targets[version.id] || ''}
-                              onChange={(e) => setTargets({ ...targets, [version.id]: e.target.value })}
-                            />
-                            {factor !== 1 ? <span className="badge">× {factor.toFixed(2).replace('.', ',')}</span> : null}
-                          </div>
-                        </div>
-                      ) : null}
-
-                      <div className="columns">
-                        <div>
-                          <strong>Ingrédients</strong>
-                          <ul>
-                            {(version.ingredients || []).map((i, index) => (
-                              <li key={index}>{[scaledQuantity(i.quantity, factor), i.unit, i.item].filter(Boolean).join(' ')}{i.note ? ` · ${i.note}` : ''}</li>
-                            ))}
-                          </ul>
-                        </div>
-                        <div>
-                          <strong>Étapes</strong>
-                          <ol>
-                            {[...(version.steps || [])].sort((a, b) => a.order - b.order).map((s, index) => <li key={index}>{s.instruction}</li>)}
-                          </ol>
-                        </div>
-                      </div>
-                      {version.temperatures?.length ? <p><strong>Températures :</strong> {version.temperatures.join(' · ')}</p> : null}
-                      {version.allergens?.length ? <p><strong>Allergènes :</strong> {version.allergens.join(', ')}</p> : null}
-                      {version.dressage ? <p className="dressageBlock"><strong>Dressage :</strong> {version.dressage}</p> : null}
-                      {version.notes ? <p><strong>Notes :</strong> {version.notes}</p> : null}
-                    </div>
-                  )
-                })}
-                <div className="recipeDangerZone noPrint">
-                  <button className="button danger" type="button" onClick={() => deleteRecipe(recipe)}>Supprimer toute la fiche</button>
-                </div>
-              </div>
-            ) : null}
           </article>
         ))}
       </div>
+
+      {openRecipe ? (
+        <div className="recipeDrawerBackdrop" onClick={() => setOpen(null)}>
+          <aside className="recipeDrawer" onClick={(e) => e.stopPropagation()}>
+            <div className="drawerTop">
+              <div>
+                <span className="badge">{openRecipe.category}</span>
+                <h2>{openRecipe.canonical_name}</h2>
+                <p className="muted">{openRecipe.recipe_versions.length} version{openRecipe.recipe_versions.length === 1 ? '' : 's'}</p>
+              </div>
+              <button className="button secondary" type="button" onClick={() => setOpen(null)}>Fermer</button>
+            </div>
+
+            {(openRecipe.recipe_versions || []).map((version) => {
+              const baseServings = firstNumber(version.servings)
+              const target = Number((targets[version.id] || '').replace(',', '.'))
+              const factor = baseServings && Number.isFinite(target) && target > 0 ? target / baseServings : 1
+              const isPreferred = openRecipe.preferred_version_id === version.id
+
+              return (
+                <div className="version" id={`recipe-version-${version.id}`} key={version.id}>
+                  <div className="printOnly printRecipeHead">
+                    <h1>{openRecipe.canonical_name}</h1>
+                    <p>{openRecipe.category} · {version.version_label}{version.servings ? ` · Rendement : ${version.servings}` : ''}</p>
+                  </div>
+                  <div className="row editHeader noPrint">
+                    <h4>{version.version_label}</h4>
+                    {isPreferred ? <span className="badge">★ Version favorite</span> : null}
+                    {openRecipe.recipe_versions.length > 1 ? (
+                      <button className="button secondary" type="button" onClick={() => setPreferredVersion(openRecipe, version)}>
+                        {isPreferred ? '★ Retirer des favoris' : '☆ Mettre en favori'}
+                      </button>
+                    ) : null}
+                    <button className="button secondary" type="button" onClick={() => startEdit(openRecipe, version)}>Modifier</button>
+                    <button className="button secondary" type="button" onClick={() => printVersion(version.id)}>Imprimer</button>
+                    <button className="button danger" type="button" onClick={() => deleteVersion(openRecipe, version)}>Supprimer la version</button>
+                  </div>
+                  <p className="muted noPrint">
+                    Source : {version.source_name || version.source_file_name || version.source_url || version.source_type}
+                    {version.servings ? ` · Rendement : ${version.servings}` : ''}
+                  </p>
+
+                  {baseServings ? (
+                    <div className="scaleBox noPrint">
+                      <strong>Adapter les quantités</strong>
+                      <div className="row">
+                        <span className="muted">Base : {version.servings}</span>
+                        <input
+                          className="input scaleInput"
+                          inputMode="decimal"
+                          placeholder="Portions souhaitées"
+                          value={targets[version.id] || ''}
+                          onChange={(e) => setTargets({ ...targets, [version.id]: e.target.value })}
+                        />
+                        {factor !== 1 ? <span className="badge">× {factor.toFixed(2).replace('.', ',')}</span> : null}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="columns">
+                    <div>
+                      <strong>Ingrédients</strong>
+                      <ul>
+                        {(version.ingredients || []).map((i, index) => (
+                          <li key={index}>{[scaledQuantity(i.quantity, factor), i.unit, i.item].filter(Boolean).join(' ')}{i.note ? ` · ${i.note}` : ''}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <strong>Étapes</strong>
+                      <ol>
+                        {[...(version.steps || [])].sort((a, b) => a.order - b.order).map((s, index) => <li key={index}>{s.instruction}</li>)}
+                      </ol>
+                    </div>
+                  </div>
+                  {version.temperatures?.length ? <p><strong>Températures :</strong> {version.temperatures.join(' · ')}</p> : null}
+                  {version.allergens?.length ? <p><strong>Allergènes :</strong> {version.allergens.join(', ')}</p> : null}
+                  {version.dressage ? <p className="dressageBlock"><strong>Dressage :</strong> {version.dressage}</p> : null}
+                  {version.notes ? <p><strong>Notes :</strong> {version.notes}</p> : null}
+                </div>
+              )
+            })}
+
+            <div className="recipeDangerZone noPrint">
+              <button className="button danger" type="button" onClick={() => deleteRecipe(openRecipe)}>Supprimer toute la fiche</button>
+            </div>
+          </aside>
+        </div>
+      ) : null}
 
       {editing ? (
         <div className="editorOverlay" onClick={() => setEditing(null)}>
@@ -381,6 +395,8 @@ export default function RecipesPage() {
               </div>
               <button className="button secondary" type="button" onClick={() => setEditing(null)}>Fermer</button>
             </div>
+
+            {message ? <div className="status editorStatus">{message}</div> : null}
 
             <div className="grid grid2">
               <label>Nom<input className="input" value={editing.canonicalName} onChange={(e) => setEditing({ ...editing, canonicalName: e.target.value })} /></label>
