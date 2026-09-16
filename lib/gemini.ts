@@ -10,22 +10,68 @@ function extractText(data: any) {
   return text
 }
 
-export async function askGemini(parts: any[], json = false) {
-  const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
-  const response = await fetch(apiUrl(model), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts }],
-      generationConfig: {
-        ...(json ? { responseMimeType: 'application/json' } : {}),
-      },
-    }),
-  })
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
-  const data = await response.json()
-  if (!response.ok) throw new Error(data?.error?.message || `Gemini ${response.status}`)
-  return extractText(data)
+function isRetryable(status: number) {
+  return status === 408 || status === 429 || status >= 500
+}
+
+async function callGemini(model: string, parts: any[], json: boolean) {
+  const delays = [0, 1000, 2200, 4500]
+  let lastError: Error | null = null
+
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (delays[attempt] > 0) {
+      const jitter = Math.floor(Math.random() * 350)
+      await sleep(delays[attempt] + jitter)
+    }
+
+    try {
+      const response = await fetch(apiUrl(model), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts }],
+          generationConfig: {
+            ...(json ? { responseMimeType: 'application/json' } : {}),
+          },
+        }),
+        signal: AbortSignal.timeout(45000),
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (response.ok) return extractText(data)
+
+      lastError = new Error(data?.error?.message || `Gemini ${response.status}`)
+      if (!isRetryable(response.status)) throw lastError
+    } catch (error: any) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+      const isTimeout = error?.name === 'TimeoutError' || error?.name === 'AbortError'
+      if (!isTimeout && attempt === delays.length - 1) throw lastError
+    }
+  }
+
+  throw lastError || new Error('Gemini indisponible')
+}
+
+export async function askGemini(parts: any[], json = false) {
+  const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
+  const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.6-flash'
+
+  try {
+    return await callGemini(primaryModel, parts, json)
+  } catch (primaryError: any) {
+    if (!fallbackModel || fallbackModel === primaryModel) throw primaryError
+
+    try {
+      return await callGemini(fallbackModel, parts, json)
+    } catch (fallbackError: any) {
+      const message = fallbackError?.message || primaryError?.message || 'Gemini indisponible'
+      throw new Error(`IA temporairement indisponible après plusieurs tentatives : ${message}`)
+    }
+  }
 }
 
 export function recipeExtractionPrompt(sourceDescription: string) {
