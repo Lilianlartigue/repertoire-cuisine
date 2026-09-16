@@ -1,4 +1,5 @@
 create extension if not exists pgcrypto;
+create extension if not exists pg_trgm;
 
 create table if not exists recipe_groups (
   id uuid primary key default gen_random_uuid(),
@@ -39,5 +40,6 @@ alter table recipe_versions
 
 create index if not exists recipe_groups_category_idx on recipe_groups(category);
 create index if not exists recipe_groups_name_idx on recipe_groups(canonical_name);
+create index if not exists recipe_groups_name_trgm_idx on recipe_groups using gin (canonical_name gin_trgm_ops);
 create index if not exists recipe_versions_recipe_id_idx on recipe_versions(recipe_id);
 create index if not exists recipe_groups_preferred_version_idx on recipe_groups(preferred_version_id);
