@@ -32,6 +32,12 @@ const recipeSchema = z.object({
 })
 
 const payloadSchema = z.object({ recipes: z.array(recipeSchema).min(1) })
+const sourceSchema = z.object({
+  type: z.enum(['url', 'pdf', 'image', 'manual']),
+  name: z.string().optional(),
+  url: z.string().optional(),
+  fileName: z.string().optional(),
+})
 
 function cleanHtml(html: string) {
   return html
@@ -206,6 +212,10 @@ async function parseAiJson(parts: any[]) {
   return payloadSchema.parse(parsed)
 }
 
+function previewResponse(recipes: ImportedRecipe[], source: { type: 'url' | 'pdf' | 'image' | 'manual'; name?: string; url?: string; fileName?: string }, extractionMethod?: string) {
+  return NextResponse.json({ detected: recipes.length, recipes, source, preview: true, extractionMethod })
+}
+
 export async function POST(request: NextRequest) {
   try {
     const contentType = request.headers.get('content-type') || ''
@@ -213,6 +223,7 @@ export async function POST(request: NextRequest) {
     if (contentType.includes('multipart/form-data')) {
       const form = await request.formData()
       const file = form.get('file')
+      const preview = form.get('preview') === 'true'
       if (!(file instanceof File)) return NextResponse.json({ error: 'Fichier manquant' }, { status: 400 })
       if (file.size > 18 * 1024 * 1024) return NextResponse.json({ error: 'Fichier trop volumineux (18 Mo maximum)' }, { status: 413 })
 
@@ -227,16 +238,21 @@ export async function POST(request: NextRequest) {
         { text: prompt },
         { inlineData: { mimeType: file.type, data: base64 } },
       ])
+      const source = { type: sourceType as 'pdf' | 'image', name: file.name, fileName: file.name }
 
-      const saved = await saveImportedRecipes(result.recipes, {
-        type: sourceType,
-        name: file.name,
-        fileName: file.name,
-      })
+      if (preview) return previewResponse(result.recipes, source, 'file-ai')
+      const saved = await saveImportedRecipes(result.recipes, source)
       return NextResponse.json({ detected: result.recipes.length, saved })
     }
 
     const body = await request.json()
+
+    if (body.savePreview) {
+      const recipes = z.array(recipeSchema).min(1).parse(body.savePreview.recipes)
+      const source = sourceSchema.parse(body.savePreview.source)
+      const saved = await saveImportedRecipes(recipes, source)
+      return NextResponse.json({ detected: recipes.length, saved })
+    }
 
     if (body.manual) {
       const recipe = recipeSchema.parse(body.manual)
@@ -258,16 +274,14 @@ export async function POST(request: NextRequest) {
     if (!page.ok) throw new Error(`Impossible de lire le site (${page.status})`)
 
     const html = await page.text()
+    const source = { type: 'url' as const, name: url.hostname, url: url.toString() }
     const structuredRecipes = extractRecipeJsonLd(html)
       .map(structuredRecipeToImported)
       .filter((recipe): recipe is ImportedRecipe => Boolean(recipe))
 
     if (structuredRecipes.length) {
-      const saved = await saveImportedRecipes(structuredRecipes, {
-        type: 'url',
-        name: url.hostname,
-        url: url.toString(),
-      })
+      if (body.preview) return previewResponse(structuredRecipes, source, 'json-ld-direct')
+      const saved = await saveImportedRecipes(structuredRecipes, source)
       return NextResponse.json({ detected: structuredRecipes.length, saved, extractionMethod: 'json-ld-direct' })
     }
 
@@ -277,12 +291,9 @@ export async function POST(request: NextRequest) {
     const prompt = recipeExtractionPrompt(`Page web ${url.toString()}.
 Analyse le contenu textuel ci-dessous. Ignore menus, publicité, newsletter et navigation.\n\n${text}`)
     const result = await parseAiJson([{ text: prompt }])
-    const saved = await saveImportedRecipes(result.recipes, {
-      type: 'url',
-      name: url.hostname,
-      url: url.toString(),
-    })
 
+    if (body.preview) return previewResponse(result.recipes, source, 'text-ai')
+    const saved = await saveImportedRecipes(result.recipes, source)
     return NextResponse.json({ detected: result.recipes.length, saved, extractionMethod: 'text-ai' })
   } catch (error: any) {
     if (error?.name === 'ZodError') {
