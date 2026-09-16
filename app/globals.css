@@ -90,6 +90,8 @@ li { margin-bottom: 7px; line-height: 1.45; }
 .scaleBox strong { display: block; margin-bottom: 9px; }
 .scaleInput { max-width: 190px; }
 .recipeDangerZone { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.dressageBlock { padding: 13px 14px; border-left: 4px solid var(--accent); background: #f7f3e9; border-radius: 0 12px 12px 0; white-space: pre-wrap; }
+.printOnly { display: none; }
 
 .editorOverlay {
   position: fixed; inset: 0; z-index: 50; padding: 24px; overflow-y: auto;
@@ -125,4 +127,50 @@ li { margin-bottom: 7px; line-height: 1.45; }
   .stepNumber { padding-top: 0; }
   .editorOverlay { padding: 10px; }
   .scaleInput { max-width: none; }
+}
+
+@media print {
+  @page { margin: 16mm; }
+  body.printingRecipe { background: white; color: #111; }
+  body.printingRecipe .sidebar,
+  body.printingRecipe .pageHead,
+  body.printingRecipe .recipeToolbar,
+  body.printingRecipe .status,
+  body.printingRecipe .recipeGrid > .recipeCard,
+  body.printingRecipe .editorOverlay,
+  body.printingRecipe .noPrint { display: none !important; }
+  body.printingRecipe .shell,
+  body.printingRecipe .content,
+  body.printingRecipe .recipeGrid {
+    display: block;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+  body.printingRecipe .recipeCard:has(.printTarget) {
+    display: block !important;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+    background: white;
+  }
+  body.printingRecipe .recipeCard:has(.printTarget) > .badge,
+  body.printingRecipe .recipeCard:has(.printTarget) > h3,
+  body.printingRecipe .recipeCard:has(.printTarget) > .muted { display: none !important; }
+  body.printingRecipe .recipeCard:has(.printTarget) .version:not(.printTarget) { display: none !important; }
+  body.printingRecipe .printTarget {
+    display: block !important;
+    border: 0;
+    margin: 0;
+    padding: 0;
+    break-inside: avoid;
+  }
+  body.printingRecipe .printOnly { display: block !important; }
+  body.printingRecipe .printRecipeHead { border-bottom: 2px solid #222; margin-bottom: 18px; padding-bottom: 10px; }
+  body.printingRecipe .printRecipeHead h1 { font-size: 28px; margin: 0 0 6px; }
+  body.printingRecipe .printRecipeHead p { margin: 0; }
+  body.printingRecipe .columns { display: grid; grid-template-columns: 1fr 1.35fr; gap: 24px; }
+  body.printingRecipe .dressageBlock { background: white; border-left: 3px solid #555; }
+  body.printingRecipe a { color: #111; }
 }
