@@ -1,0 +1,42 @@
+.alert {
+  margin-bottom: 22px;
+  border-color: #d7b971;
+  background: #fff8e7;
+}
+
+.alert strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.pair {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid #ead9a9;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .65);
+}
+
+.arrow {
+  color: #8a6d2f;
+  font-weight: 800;
+}
+
+@media (max-width: 900px) {
+  .alert {
+    margin-bottom: 18px;
+  }
+
+  .pair {
+    align-items: flex-start;
+  }
+}
