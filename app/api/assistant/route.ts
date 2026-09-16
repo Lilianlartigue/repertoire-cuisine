@@ -27,6 +27,65 @@ function isRecipeListQuestion(question: string) {
   )
 }
 
+async function readLibrary(db: any) {
+  try {
+    return await db.query(`
+      select
+        g.canonical_name,
+        g.category,
+        g.tags,
+        g.preferred_version_id,
+        coalesce(
+          json_agg(
+            json_build_object(
+              'id', v.id,
+              'version_label', v.version_label,
+              'preferred', v.id = g.preferred_version_id,
+              'servings', v.servings,
+              'ingredients', v.ingredients,
+              'steps', v.steps,
+              'notes', v.notes
+            ) order by (v.id = g.preferred_version_id) desc, v.created_at asc
+          ) filter (where v.id is not null),
+          '[]'::json
+        ) as recipe_versions
+      from recipe_groups g
+      left join recipe_versions v on v.recipe_id = g.id
+      group by g.id
+      order by g.canonical_name asc
+      limit 200
+    `)
+  } catch (error: any) {
+    if (error?.code !== '42703') throw error
+    return db.query(`
+      select
+        g.canonical_name,
+        g.category,
+        g.tags,
+        null::uuid as preferred_version_id,
+        coalesce(
+          json_agg(
+            json_build_object(
+              'id', v.id,
+              'version_label', v.version_label,
+              'preferred', false,
+              'servings', v.servings,
+              'ingredients', v.ingredients,
+              'steps', v.steps,
+              'notes', v.notes
+            ) order by v.created_at asc
+          ) filter (where v.id is not null),
+          '[]'::json
+        ) as recipe_versions
+      from recipe_groups g
+      left join recipe_versions v on v.recipe_id = g.id
+      group by g.id
+      order by g.canonical_name asc
+      limit 200
+    `)
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { question } = await request.json()
@@ -36,31 +95,7 @@ export async function POST(request: NextRequest) {
     let libraryRows: any[] = []
 
     try {
-      const db = getDb()
-      const result = await db.query(`
-        select
-          g.canonical_name,
-          g.category,
-          g.tags,
-          coalesce(
-            json_agg(
-              json_build_object(
-                'version_label', v.version_label,
-                'servings', v.servings,
-                'ingredients', v.ingredients,
-                'steps', v.steps,
-                'notes', v.notes
-              ) order by v.created_at asc
-            ) filter (where v.id is not null),
-            '[]'::json
-          ) as recipe_versions
-        from recipe_groups g
-        left join recipe_versions v on v.recipe_id = g.id
-        group by g.id
-        order by g.canonical_name asc
-        limit 200
-      `)
-
+      const result = await readLibrary(getDb())
       libraryRows = result.rows
       if (libraryRows.length) libraryContext = JSON.stringify(libraryRows)
     } catch {
@@ -90,6 +125,7 @@ Règles de réponse :
 - Pour une idée, association ou question technique : réponds en quelques phrases, directement.
 - Si l'utilisateur demande explicitement une recette, donne une recette exploitable avec ingrédients puis étapes.
 - Si une recette du répertoire correspond à la demande, privilégie cette recette et précise qu'elle vient du répertoire.
+- Quand une version a "preferred": true, utilise-la en priorité sur les autres versions de la même recette.
 - N'invente pas qu'une recette est dans le répertoire si elle n'est pas dans le contexte.
 - Utilise des unités de cuisine claires et des températures en °C.
 
