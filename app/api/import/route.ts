@@ -100,6 +100,16 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
+
+    if (body.manual) {
+      const recipe = recipeSchema.parse(body.manual)
+      const saved = await saveImportedRecipes([recipe], {
+        type: 'manual',
+        name: 'Ajout manuel',
+      })
+      return NextResponse.json({ detected: 1, saved })
+    }
+
     if (!body.url) return NextResponse.json({ error: 'URL manquante' }, { status: 400 })
     const url = assertPublicUrl(body.url)
     const page = await fetch(url, {
@@ -123,7 +133,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ detected: result.recipes.length, saved })
   } catch (error: any) {
     if (error?.name === 'ZodError') {
-      return NextResponse.json({ error: 'L’IA a détecté une fiche mais son format est incomplet. Réessaie avec une image plus nette.' }, { status: 422 })
+      return NextResponse.json({ error: 'La fiche est incomplète. Vérifie le nom, la catégorie, les ingrédients et les étapes.' }, { status: 422 })
     }
     return NextResponse.json({ error: error.message || 'Erreur pendant l’import' }, { status: 500 })
   }
