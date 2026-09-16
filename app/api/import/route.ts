@@ -47,6 +47,58 @@ function cleanHtml(html: string) {
     .trim()
 }
 
+function isRecipeType(value: unknown) {
+  if (typeof value === 'string') return value.toLowerCase() === 'recipe'
+  if (Array.isArray(value)) return value.some((item) => isRecipeType(item))
+  return false
+}
+
+function collectRecipeNodes(value: unknown, output: Record<string, unknown>[]) {
+  if (Array.isArray(value)) {
+    for (const item of value) collectRecipeNodes(item, output)
+    return
+  }
+
+  if (!value || typeof value !== 'object') return
+  const object = value as Record<string, unknown>
+
+  if (isRecipeType(object['@type'])) output.push(object)
+
+  for (const nested of Object.values(object)) {
+    if (nested && typeof nested === 'object') collectRecipeNodes(nested, output)
+  }
+}
+
+function extractRecipeJsonLd(html: string) {
+  const recipes: Record<string, unknown>[] = []
+  const scriptRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+  let match: RegExpExecArray | null
+
+  while ((match = scriptRegex.exec(html)) !== null) {
+    const raw = match[1]?.trim()
+    if (!raw) continue
+
+    try {
+      const parsed = JSON.parse(raw)
+      collectRecipeNodes(parsed, recipes)
+    } catch {
+      // Certains sites contiennent un JSON-LD non valide. On passe au bloc suivant.
+    }
+  }
+
+  const unique = new Map<string, Record<string, unknown>>()
+  for (const recipe of recipes) {
+    const key = JSON.stringify([
+      recipe.name ?? '',
+      recipe.recipeIngredient ?? [],
+      recipe.recipeInstructions ?? [],
+    ])
+    if (!unique.has(key)) unique.set(key, recipe)
+  }
+
+  return Array.from(unique.values()).slice(0, 8)
+}
+
 function assertPublicUrl(value: string) {
   const url = new URL(value)
   if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Adresse non autorisée')
@@ -113,24 +165,49 @@ export async function POST(request: NextRequest) {
     if (!body.url) return NextResponse.json({ error: 'URL manquante' }, { status: 400 })
     const url = assertPublicUrl(body.url)
     const page = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 RecipeLibrary/1.0' },
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0 Safari/537.36',
+        'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+      },
       cache: 'no-store',
       redirect: 'follow',
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(15000),
     })
     if (!page.ok) throw new Error(`Impossible de lire le site (${page.status})`)
-    const html = await page.text()
-    const text = cleanHtml(html).slice(0, 65000)
-    if (text.length < 80) throw new Error('Le site ne contient pas assez de texte exploitable')
 
-    const prompt = recipeExtractionPrompt(`Page web ${url.toString()}. Voici son contenu textuel :\n\n${text}`)
+    const html = await page.text()
+    const structuredRecipes = extractRecipeJsonLd(html)
+
+    let sourceForAi: string
+    let extractionMethod: 'json-ld' | 'text'
+
+    if (structuredRecipes.length) {
+      extractionMethod = 'json-ld'
+      sourceForAi = `Page web ${url.toString()}.
+Le site fournit des données structurées Schema.org Recipe. Utilise-les en priorité et n'invente rien qui n'y figure pas.
+
+Données Recipe :\n${JSON.stringify(structuredRecipes).slice(0, 60000)}`
+    } else {
+      extractionMethod = 'text'
+      const text = cleanHtml(html).slice(0, 65000)
+      if (text.length < 80) throw new Error('Le site ne contient pas assez de texte exploitable')
+      sourceForAi = `Page web ${url.toString()}.
+Aucune donnée Recipe structurée exploitable n'a été trouvée. Analyse le contenu textuel ci-dessous et ignore menus, publicité, newsletter et navigation.\n\n${text}`
+    }
+
+    const prompt = recipeExtractionPrompt(sourceForAi)
     const result = await parseAiJson([{ text: prompt }])
     const saved = await saveImportedRecipes(result.recipes, {
       type: 'url',
       name: url.hostname,
       url: url.toString(),
     })
-    return NextResponse.json({ detected: result.recipes.length, saved })
+
+    return NextResponse.json({
+      detected: result.recipes.length,
+      saved,
+      extractionMethod,
+    })
   } catch (error: any) {
     if (error?.name === 'ZodError') {
       return NextResponse.json({ error: 'La fiche est incomplète. Vérifie le nom, la catégorie, les ingrédients et les étapes.' }, { status: 422 })
