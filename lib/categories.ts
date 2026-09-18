@@ -23,7 +23,7 @@ export const CUISINE_CATEGORIES = [
 export type CuisineCategory = typeof CUISINE_CATEGORIES[number]
 
 export function normalizeCuisineCategory(value: string | null | undefined, name = ''): CuisineCategory {
-  const raw = `${value || ''} ${name}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const raw = `${value || ''} ${name}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/œ/g, 'oe').toLowerCase()
 
   const aliases: Array<[RegExp, CuisineCategory]> = [
     [/veloute|soupe|potage/, 'Velouté entrée'],
