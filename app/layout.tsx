@@ -4,6 +4,23 @@ import Link from 'next/link'
 export const metadata = {
   title: 'Répertoire Cuisine',
   description: 'Bibliothèque culinaire intelligente',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    title: 'Répertoire Cuisine',
+    statusBarStyle: 'default' as const,
+  },
+  icons: {
+    icon: '/icon.svg',
+    apple: '/icon.svg',
+  },
+}
+
+export const viewport = {
+  themeColor: '#5f7d67',
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover' as const,
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
