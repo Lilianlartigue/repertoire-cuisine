@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { CUISINE_CATEGORIES } from '@/lib/categories'
 
 type Ingredient = { item: string; quantity?: string | null; unit?: string | null; note?: string | null }
 type Step = { order: number; instruction: string }
@@ -103,7 +104,7 @@ export default function RecipesPage() {
     loadRecipes().finally(() => setLoading(false))
   }, [])
 
-  const categories = useMemo(() => ['Toutes', ...Array.from(new Set(recipes.map((r) => r.category))).sort()], [recipes])
+  const categories = useMemo(() => ['Toutes', ...CUISINE_CATEGORIES], [])
   const filtered = recipes.filter((r) => {
     const versionText = (r.recipe_versions || []).flatMap((v) => [
       ...(v.ingredients || []).map((i) => `${i.item} ${i.quantity || ''} ${i.unit || ''} ${i.note || ''}`),
@@ -174,7 +175,7 @@ export default function RecipesPage() {
       recipeId: editing.recipeId,
       versionId: editing.versionId,
       canonicalName: editing.canonicalName.trim(),
-      category: editing.category.trim() || 'Autres',
+      category: editing.category.trim() || 'Entrée',
       tags: splitList(editing.tags),
       servings: editing.servings.trim() || null,
       ingredients: editing.ingredients
@@ -400,7 +401,7 @@ export default function RecipesPage() {
 
             <div className="grid grid2">
               <label>Nom<input className="input" value={editing.canonicalName} onChange={(e) => setEditing({ ...editing, canonicalName: e.target.value })} /></label>
-              <label>Catégorie<input className="input" value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value })} /></label>
+              <label>Catégorie<select className="select" value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value })}>{CUISINE_CATEGORIES.map((item) => <option key={item}>{item}</option>)}</select></label>
               <label>Rendement / portions<input className="input" value={editing.servings} onChange={(e) => setEditing({ ...editing, servings: e.target.value })} /></label>
               <label>Tags, séparés par des virgules<input className="input" value={editing.tags} onChange={(e) => setEditing({ ...editing, tags: e.target.value })} /></label>
             </div>
