@@ -17,6 +17,7 @@ export const CUISINE_CATEGORIES = [
   'Mousse',
   'Confit',
   'Pâtisserie',
+  'Dessert',
   'Boulangerie',
 ] as const
 
@@ -43,7 +44,8 @@ export function normalizeCuisineCategory(value: string | null | undefined, name 
     [/mousse/, 'Mousse'],
     [/confit/, 'Confit'],
     [/boulanger|pain|brioche|croissant|viennoiser/, 'Boulangerie'],
-    [/patisserie|dessert|gateau|biscuit|entremets|tarte sucree/, 'Pâtisserie'],
+    [/patisserie|gateau|biscuit|entremets|tarte sucree/, 'Pâtisserie'],
+    [/dessert/, 'Dessert'],
     [/entree|starter|appetizer/, 'Entrée'],
   ]
 
