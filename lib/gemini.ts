@@ -1,3 +1,5 @@
+import { CUISINE_CATEGORIES } from '@/lib/categories'
+
 function apiUrl(model: string) {
   const key = process.env.GEMINI_API_KEY
   if (!key) throw new Error('GEMINI_API_KEY manquante')
@@ -86,7 +88,7 @@ Règles impératives :
 4. Normalise le nom. canonicalName doit être un nom simple et stable servant à reconnaître la même recette lors d'un futur import.
 5. N'invente aucune quantité absente. Utilise null si nécessaire.
 6. Conserve les températures, temps, rendements et remarques utiles.
-7. Catégories conseillées : Entrées, Poissons, Viandes, Garnitures, Sauces, Pâtes et appareils, Crèmes, Biscuits, Pâtisserie, Desserts, Glaces et sorbets, Boulangerie, Bases, Autres.
+7. La catégorie doit être EXACTEMENT l’une de celles-ci : ${CUISINE_CATEGORIES.join(', ')}. Choisis la catégorie la plus précise. Distingue notamment pâte de base/pâte dérivée et crème de base/crème dérivée.
 8. Retourne uniquement du JSON valide.
 
 Format exact :
@@ -95,7 +97,7 @@ Format exact :
     {
       "canonicalName": "Crème pâtissière",
       "displayName": "Crème pâtissière",
-      "category": "Crèmes",
+      "category": "Crème de base",
       "tags": ["vanille"],
       "servings": "1 kg",
       "ingredients": [{"item":"Lait","quantity":"500","unit":"g","note":null}],
