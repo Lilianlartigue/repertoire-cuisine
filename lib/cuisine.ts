@@ -1,4 +1,5 @@
 import { getDb } from '@/lib/db'
+import { normalizeCuisineCategory } from '@/lib/categories'
 
 export type ImportedRecipe = {
   canonicalName: string
@@ -35,6 +36,7 @@ export async function saveImportedRecipes(
   const saved: Array<{ id: string; name: string; version: string; existing: boolean }> = []
 
   for (const recipe of recipes) {
+    const category = normalizeCuisineCategory(recipe.category, recipe.displayName || recipe.canonicalName)
     const key = canonicalKey(recipe.canonicalName || recipe.displayName)
 
     const existingResult = await db.query(
@@ -53,7 +55,7 @@ export async function saveImportedRecipes(
         [
           key,
           recipe.displayName || recipe.canonicalName,
-          recipe.category || 'Autres',
+          category,
           recipe.tags ?? [],
         ]
       )
@@ -63,7 +65,7 @@ export async function saveImportedRecipes(
         `update recipe_groups
          set category = $1, tags = $2, updated_at = now()
          where id = $3`,
-        [recipe.category || 'Autres', recipe.tags ?? [], groupId]
+        [category, recipe.tags ?? [], groupId]
       )
     }
 
