@@ -1,6 +1,7 @@
 'use client'
 
 import { FormEvent, useState } from 'react'
+import { CUISINE_CATEGORIES } from '@/lib/categories'
 
 type Saved = { id: string; name: string; version: string; existing: boolean }
 type Ingredient = { item: string; quantity: string; unit: string; note: string }
@@ -23,11 +24,7 @@ type PreviewRecipe = {
 }
 type PreviewSource = { type: 'url' | 'pdf' | 'image' | 'manual'; name?: string; url?: string; fileName?: string }
 
-const categories = [
-  'Entrées', 'Poissons', 'Viandes', 'Garnitures', 'Sauces', 'Pâtes et appareils',
-  'Crèmes', 'Biscuits', 'Pâtisserie', 'Desserts', 'Glaces et sorbets',
-  'Boulangerie', 'Bases', 'Autres',
-]
+const categories = [...CUISINE_CATEGORIES]
 
 export default function ImportPage() {
   const [file, setFile] = useState<File | null>(null)
@@ -39,7 +36,7 @@ export default function ImportPage() {
   const [previewSource, setPreviewSource] = useState<PreviewSource | null>(null)
 
   const [name, setName] = useState('')
-  const [category, setCategory] = useState('Autres')
+  const [category, setCategory] = useState('Entrée')
   const [servings, setServings] = useState('')
   const [tags, setTags] = useState('')
   const [equipment, setEquipment] = useState('')
