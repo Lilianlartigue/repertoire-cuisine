@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { askGemini, recipeExtractionPrompt } from '@/lib/gemini'
 import { saveImportedRecipes, type ImportedRecipe } from '@/lib/cuisine'
+import { normalizeCuisineCategory } from '@/lib/categories'
 
 export const runtime = 'nodejs'
 
@@ -133,14 +134,9 @@ function flattenInstructions(value: unknown, output: string[]): void {
 function pickCategory(node: Record<string, unknown>, name: string): string {
   const raw = [node.recipeCategory, node.recipeCuisine, node.keywords]
     .flatMap((value) => Array.isArray(value) ? value : [value])
-    .map((value) => toText(value)?.toLowerCase() || '')
+    .map((value) => toText(value) || '')
     .join(' ')
-  const haystack = `${name.toLowerCase()} ${raw}`
-  if (haystack.includes('crème')) return 'Crèmes'
-  if (haystack.includes('dessert') || haystack.includes('pâtiss')) return 'Desserts'
-  if (haystack.includes('sauce')) return 'Sauces'
-  if (haystack.includes('boulanger') || haystack.includes('pain') || haystack.includes('brioche')) return 'Boulangerie'
-  return 'Autres'
+  return normalizeCuisineCategory(raw, name)
 }
 
 function structuredRecipeToImported(node: Record<string, unknown>): ImportedRecipe | null {
