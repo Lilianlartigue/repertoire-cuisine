@@ -1,5 +1,5 @@
 export const CUISINE_CATEGORIES = [
-  'Velouté entrée',
+  'Velouté / soupe',
   'Tarte salée',
   'Entrée',
   'Viande',
@@ -12,6 +12,7 @@ export const CUISINE_CATEGORIES = [
   'Crème de base',
   'Crème dérivée',
   'Crémeux',
+  'Ganache',
   'Meringue',
   'Glace et sorbet',
   'Mousse',
@@ -27,7 +28,7 @@ export function normalizeCuisineCategory(value: string | null | undefined, name 
   const raw = `${value || ''} ${name}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/œ/g, 'oe').toLowerCase()
 
   const aliases: Array<[RegExp, CuisineCategory]> = [
-    [/veloute|soupe|potage/, 'Velouté entrée'],
+    [/veloute|soupe|potage/, 'Velouté / soupe'],
     [/tarte.*sale|quiche/, 'Tarte salée'],
     [/\bviande|boeuf|veau|porc|agneau|volaille|poulet|canard|lapin/, 'Viande'],
     [/poisson|saumon|cabillaud|dorade|thon|truite|merlu|lotte|sole|bar\b/, 'Poisson'],
@@ -39,6 +40,7 @@ export function normalizeCuisineCategory(value: string | null | undefined, name 
     [/creme.*base|creme patissiere|creme anglaise/, 'Crème de base'],
     [/creme.*derivee|mousseline|chiboust|diplomate|frangipane/, 'Crème dérivée'],
     [/cremeux/, 'Crémeux'],
+    [/ganache/, 'Ganache'],
     [/meringue/, 'Meringue'],
     [/glace|sorbet/, 'Glace et sorbet'],
     [/mousse/, 'Mousse'],
