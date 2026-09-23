@@ -15,7 +15,11 @@ export async function proxy(request: NextRequest) {
   const username = process.env.SITE_USER || 'lilian'
   const pathname = request.nextUrl.pathname
 
-  if (pathname === '/login' || pathname.startsWith('/api/auth/')) {
+  if (
+    pathname === '/login' ||
+    pathname.startsWith('/api/auth/') ||
+    pathname === '/api/readonly'
+  ) {
     return NextResponse.next()
   }
 
