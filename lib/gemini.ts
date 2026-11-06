@@ -1,79 +1,88 @@
 import { CUISINE_CATEGORIES } from '@/lib/categories'
 
-function apiUrl(model: string) {
+export class AiError extends Error {
+  constructor(public code: string, message: string, public status = 503, public retryable = false) {
+    super(message)
+    this.name = 'AiError'
+  }
+}
+
+type Options = { signal?: AbortSignal; timeoutMs?: number; attemptTimeoutMs?: number }
+
+function httpError(status: number) {
+  if (status === 401 || status === 403) return new AiError('AI_AUTH', 'La connexion au service IA doit être vérifiée par le propriétaire du site.')
+  if (status === 404) return new AiError('AI_MODEL', 'Le modèle IA configuré est indisponible.')
+  if (status === 429) return new AiError('AI_QUOTA', 'Le service IA a atteint sa limite de demandes. Réessaie un peu plus tard.', 429, true)
+  if (status === 408 || status >= 500) return new AiError('AI_UNAVAILABLE', 'Le service IA est temporairement indisponible. Réessaie dans un instant.', 503, true)
+  return new AiError('AI_REQUEST', 'Le service IA ne peut pas traiter cette demande. Essaie une question plus courte.', 422)
+}
+
+export async function askGemini(parts: any[], json = false, options: Options = {}) {
   const key = process.env.GEMINI_API_KEY
-  if (!key) throw new Error('GEMINI_API_KEY manquante')
-  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`
-}
+  if (!key) throw new AiError('AI_CONFIG', 'L’IA n’est pas encore configurée sur le site.')
+  const primary = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
+  const fallback = process.env.GEMINI_FALLBACK_MODEL?.trim()
+  const deadline = AbortSignal.timeout(options.timeoutMs ?? (json ? 90000 : 40000))
+  const overall = options.signal ? AbortSignal.any([deadline, options.signal]) : deadline
+  let model = primary
 
-function extractText(data: any) {
-  const text = data?.candidates?.[0]?.content?.parts?.map((part: any) => part.text || '').join('')
-  if (!text) throw new Error(data?.error?.message || 'Réponse IA vide')
-  return text
-}
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-function isRetryable(status: number) {
-  return status === 408 || status === 429 || status >= 500
-}
-
-async function callGemini(model: string, parts: any[], json: boolean) {
-  const delays = [0, 1000, 2200, 4500]
-  let lastError: Error | null = null
-
-  for (let attempt = 0; attempt < delays.length; attempt++) {
-    if (delays[attempt] > 0) {
-      const jitter = Math.floor(Math.random() * 350)
-      await sleep(delays[attempt] + jitter)
-    }
-
+  // Two attempts total, including a possible fallback, within ONE time budget.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const started = Date.now()
+    let retryAfter = 0
     try {
-      const response = await fetch(apiUrl(model), {
+      overall.throwIfAborted()
+      const signal = AbortSignal.any([overall, AbortSignal.timeout(options.attemptTimeoutMs ?? (json ? 45000 : 25000))])
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
         body: JSON.stringify({
           contents: [{ role: 'user', parts }],
-          generationConfig: {
-            ...(json ? { responseMimeType: 'application/json' } : {}),
-          },
+          generationConfig: json ? { responseMimeType: 'application/json' } : {},
         }),
-        signal: AbortSignal.timeout(45000),
+        signal,
       })
-
-      const data = await response.json().catch(() => ({}))
-      if (response.ok) return extractText(data)
-
-      lastError = new Error(data?.error?.message || `Gemini ${response.status}`)
-      if (!isRetryable(response.status)) throw lastError
-    } catch (error: any) {
-      lastError = error instanceof Error ? error : new Error(String(error))
-      const isTimeout = error?.name === 'TimeoutError' || error?.name === 'AbortError'
-      if (!isTimeout && attempt === delays.length - 1) throw lastError
+      if (!response.ok) {
+        const value = response.headers.get('retry-after')
+        retryAfter = value ? (/^\d+$/.test(value) ? Number(value) * 1000 : Math.max(0, Date.parse(value) - Date.now())) : 0
+        await response.body?.cancel()
+        throw httpError(response.status)
+      }
+      const data = await response.json()
+      const candidate = data?.candidates?.[0]
+      if (data?.promptFeedback?.blockReason || candidate?.finishReason === 'SAFETY') {
+        throw new AiError('AI_BLOCKED', 'Le service IA n’a pas pu répondre à cette demande. Reformule ta question.', 422)
+      }
+      if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
+        throw new AiError('AI_INCOMPLETE', 'La réponse IA est incomplète. Essaie une demande plus ciblée.', 502)
+      }
+      const text = candidate?.content?.parts?.filter((part: any) => !part.thought).map((part: any) => part.text || '').join('').trim()
+      if (!text) throw new AiError('AI_EMPTY', 'Le service IA a renvoyé une réponse vide. Réessaie.', 502)
+      console.info('ai_request', { model, attempt: attempt + 1, durationMs: Date.now() - started, outcome: 'ok' })
+      return text as string
+    } catch (error) {
+      const cancelled = options.signal?.aborted
+      const timedOut = deadline.aborted || (error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name))
+      const failure = cancelled
+        ? new AiError('AI_CANCELLED', 'La demande a été annulée.', 499)
+        : timedOut
+          ? new AiError('AI_TIMEOUT', 'L’IA met trop de temps à répondre. Réessaie avec une demande plus courte.', 504, true)
+          : error instanceof AiError ? error
+            : error instanceof TypeError ? new AiError('AI_NETWORK', 'La connexion au service IA a été interrompue. Réessaie.', 503, true)
+              : new AiError('AI_RESPONSE', 'La réponse du service IA est illisible. Réessaie.', 502)
+      console.warn('ai_request', { model, attempt: attempt + 1, durationMs: Date.now() - started, code: failure.code })
+      const canFallback = failure.code === 'AI_MODEL' && fallback && fallback !== model
+      if (attempt === 1 || overall.aborted || (!failure.retryable && !canFallback) || retryAfter > 1500) throw failure
+      if (fallback && fallback !== model) model = fallback
+      await new Promise<void>((resolve, reject) => {
+        const onAbort = () => { clearTimeout(timer); reject(failure) }
+        const timer = setTimeout(() => { overall.removeEventListener('abort', onAbort); resolve() }, Math.max(300, retryAfter || 0))
+        overall.addEventListener('abort', onAbort, { once: true })
+        if (overall.aborted) { overall.removeEventListener('abort', onAbort); onAbort() }
+      })
     }
   }
-
-  throw lastError || new Error('Gemini indisponible')
-}
-
-export async function askGemini(parts: any[], json = false) {
-  const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
-  const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.6-flash'
-
-  try {
-    return await callGemini(primaryModel, parts, json)
-  } catch (primaryError: any) {
-    if (!fallbackModel || fallbackModel === primaryModel) throw primaryError
-
-    try {
-      return await callGemini(fallbackModel, parts, json)
-    } catch (fallbackError: any) {
-      const message = fallbackError?.message || primaryError?.message || 'Gemini indisponible'
-      throw new Error(`IA temporairement indisponible après plusieurs tentatives : ${message}`)
-    }
-  }
+  throw new AiError('AI_UNAVAILABLE', 'Le service IA est temporairement indisponible.')
 }
 
 export function recipeExtractionPrompt(sourceDescription: string) {
