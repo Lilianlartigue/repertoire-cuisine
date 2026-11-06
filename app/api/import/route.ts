@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { askGemini, recipeExtractionPrompt } from '@/lib/gemini'
+import { AiError, askGemini, recipeExtractionPrompt } from '@/lib/gemini'
 import { saveImportedRecipes, type ImportedRecipe } from '@/lib/cuisine'
 import { normalizeCuisineCategory } from '@/lib/categories'
 
 export const runtime = 'nodejs'
+export const maxDuration = 120
 
 const recipeSchema = z.object({
   canonicalName: z.string().min(1),
@@ -292,6 +293,7 @@ Analyse le contenu textuel ci-dessous. Ignore menus, publicité, newsletter et n
     const saved = await saveImportedRecipes(result.recipes, source)
     return NextResponse.json({ detected: result.recipes.length, saved, extractionMethod: 'text-ai' })
   } catch (error: any) {
+    if (error instanceof AiError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
     if (error?.name === 'ZodError') {
       return NextResponse.json({ error: 'La fiche est incomplète. Vérifie le nom, la catégorie, les ingrédients et les étapes.' }, { status: 422 })
     }
