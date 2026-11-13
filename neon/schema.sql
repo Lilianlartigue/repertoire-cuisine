@@ -43,3 +43,18 @@ create index if not exists recipe_groups_name_idx on recipe_groups(canonical_nam
 create index if not exists recipe_groups_name_trgm_idx on recipe_groups using gin (canonical_name gin_trgm_ops);
 create index if not exists recipe_versions_recipe_id_idx on recipe_versions(recipe_id);
 create index if not exists recipe_groups_preferred_version_idx on recipe_groups(preferred_version_id);
+
+-- Carnet d'idées : photos compressées et associations de saveurs.
+-- Table indépendante pour ne jamais modifier les recettes existantes.
+create table if not exists culinary_ideas (
+  id uuid primary key default gen_random_uuid(),
+  type text not null check (type in ('photo', 'association')),
+  title text not null,
+  description text not null default '',
+  flavors text not null default '',
+  tags text[] not null default '{}',
+  image_data text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists culinary_ideas_updated_idx on culinary_ideas(updated_at desc);
