@@ -1,0 +1,61 @@
+.ideasHeader { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.ideasHeader .button { white-space: nowrap; }
+.ideaToolbar { display: grid; grid-template-columns: minmax(0, 1fr) 215px; gap: 12px; margin-bottom: 23px; }
+.ideaGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.ideaCard {
+  display: block; width: 100%; padding: 0; text-align: left; overflow: hidden;
+  border: 1px solid var(--line); border-radius: 20px; background: var(--card);
+  color: var(--ink); box-shadow: var(--shadow); cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.ideaCard:hover { transform: translateY(-3px); box-shadow: 0 16px 36px rgba(57, 67, 60, .14); }
+.ideaCard:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.ideaCardPhoto { display: block; width: 100%; height: 205px; object-fit: cover; background: #e8e8e1; }
+.ideaCardBlank {
+  display: flex; align-items: center; justify-content: center; height: 135px;
+  padding: 22px; background: linear-gradient(135deg, #e5e9dd, #f2e8d7);
+  color: #657368; font-size: 15px; font-weight: 700; letter-spacing: .02em;
+}
+.ideaCardBody { padding: 18px 19px 20px; }
+.ideaCardBody h3 { font-size: 19px; line-height: 1.3; margin: 12px 0 8px; overflow-wrap: anywhere; }
+.ideaFlavors { margin: 8px 0; font-weight: 650; color: #536d59; overflow-wrap: anywhere; }
+.ideaExcerpt { margin: 8px 0 0; font-size: 13px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ideaEmpty { text-align: center; padding: 38px; margin-bottom: 20px; }
+.ideaEmpty h2 { margin-bottom: 8px; }
+.ideaDrawer { overscroll-behavior: contain; z-index: 51; }
+.ideaDrawer .drawerTop { align-items: flex-start; }
+.ideaDrawer .drawerTop h2 { overflow-wrap: anywhere; line-height: 1.25; }
+.ideaForm { display: grid; gap: 19px; padding-bottom: 25px; }
+.ideaForm label { display: grid; gap: 9px; font-weight: 700; }
+.ideaForm .textarea { min-height: 160px; font-weight: 400; }
+.ideaForm input[type="file"] { font-weight: 400; }
+.ideaEditPreview { display: block; width: 100%; max-height: 260px; object-fit: contain; background: #f1f0eb; border-radius: 14px; margin: 2px 0 11px; }
+.ideaFormActions { margin-top: 6px; justify-content: flex-end; }
+.ideaHero { width: 100%; height: auto; max-height: 55vh; object-fit: contain; background: #f0eee8; border-radius: 16px; display: block; margin-bottom: 24px; }
+.ideaDetailSection { border-top: 1px solid var(--line); padding-top: 20px; margin-top: 20px; }
+.ideaDetailSection h3 { font-size: 17px; margin: 0 0 12px; }
+.ideaFlavorDetail { color: #44634b; font-weight: 650; font-size: 17px; overflow-wrap: anywhere; }
+.ideaLongText { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ideaTags { margin-top: 22px; }
+.ideaDetailActions { border-top: 1px solid var(--line); padding: 22px 0 35px; margin-top: 25px; justify-content: flex-start; }
+@media (max-width: 1100px) {
+  .ideaGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .ideasHeader { align-items: flex-start; flex-wrap: wrap; }
+  .ideaToolbar { grid-template-columns: 1fr; }
+  .ideaGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .ideaCardPhoto { height: 155px; }
+  .ideaCardBlank { height: 118px; }
+  .ideaCardBody { padding: 13px 14px 16px; }
+  .ideaCardBody h3 { font-size: 16px; }
+  .ideaDrawer { padding-bottom: max(30px, env(safe-area-inset-bottom)); }
+}
+@media (max-width: 480px) {
+  .ideaGrid { grid-template-columns: 1fr; }
+  .ideaCardPhoto { height: 200px; }
+  .ideaEmpty { padding: 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ideaCard { transition: none; }
+}
